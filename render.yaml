@@ -1,0 +1,35 @@
+# Configuracao do Render. Ao criar o servico, aponte para este arquivo
+# (Blueprint) ou preencha os mesmos campos na mao.
+#
+# As variaveis estao com `sync: false` de proposito: isso diz ao Render para
+# pedir o valor no painel em vez de guarda-lo aqui. Segredo nao entra em
+# arquivo versionado.
+#
+# Por que o banco NAO e o Postgres do Render: o gratuito dele expira 30 dias
+# depois de criado e apaga os dados. O DATABASE_URL abaixo aponta para o Neon,
+# cujo plano gratuito e permanente. Ver o README.
+
+services:
+  - type: web
+    name: webapp-compras
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/saude
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # String de conexao do Neon (nao do Render).
+      - key: DATABASE_URL
+        sync: false
+      # Gere com: npm run senha:hash -- "sua senha"
+      - key: SENHA_HASH
+        sync: false
+      # Qualquer string longa e aleatoria. Trocar desloga todos os aparelhos.
+      - key: SESSAO_SEGREDO
+        sync: false
+      # Opcional: sem ela o app funciona e so as dicas ficam desligadas.
+      - key: ANTHROPIC_API_KEY
+        sync: false
