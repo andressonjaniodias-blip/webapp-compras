@@ -22,6 +22,7 @@ npm run dev        # Vite + API juntos
 npm run build      # typecheck dos dois lados + build do app e do servidor
 npm run teste:sync # teste de sincronização contra Postgres em memória
 npm start          # o que o Render executa
+npm run segredo    # gera o SESSAO_SEGREDO
 ```
 
 `npm run build` e `npm run teste:sync` são as únicas verificações automáticas.

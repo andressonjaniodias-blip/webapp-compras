@@ -14,6 +14,7 @@
     "start": "node dist-servidor/index.js",
     "banco:criar": "tsx scripts/criar-banco.ts",
     "senha:hash": "tsx scripts/gerar-hash.ts",
+    "segredo": "tsx scripts/gerar-segredo.ts",
     "icones": "tsx scripts/gerar-icones.ts",
     "teste:sync": "tsx scripts/testar-sincronizacao.ts"
   },

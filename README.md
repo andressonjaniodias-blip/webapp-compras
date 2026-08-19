@@ -82,7 +82,7 @@ build, start e a lista de variáveis. Preencha no painel:
 | --- | --- |
 | `DATABASE_URL` | a string do Neon |
 | `SENHA_HASH` | `npm run senha:hash -- "sua senha"` |
-| `SESSAO_SEGREDO` | qualquer string longa e aleatória |
+| `SESSAO_SEGREDO` | `npm run segredo` |
 | `ANTHROPIC_API_KEY` | opcional, veja abaixo |
 
 O plano gratuito hiberna depois de 15 minutos parado e leva perto de um minuto
