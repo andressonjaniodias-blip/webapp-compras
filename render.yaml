@@ -14,7 +14,9 @@ services:
     name: webapp-compras
     runtime: node
     plan: free
-    region: oregon
+    # Virginia é a região do Render mais próxima do Brasil. Escolha o Neon na
+    # região equivalente (AWS us-east-1) para o salto servidor→banco ser curto.
+    region: virginia
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /api/saude
