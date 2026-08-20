@@ -101,15 +101,31 @@ function crachaValido(valor: string | undefined): boolean {
   return Number.isFinite(expiraEm) && expiraEm > Date.now();
 }
 
+/**
+ * O cookie so pode ser `Secure` quando a conexao e HTTPS, senao o navegador o
+ * descarta e o login falha em silencio — a senha e aceita e a proxima
+ * requisicao chega sem sessao.
+ *
+ * A decisao olha para o protocolo da requisicao, nao para o banco configurado.
+ * Amarrar isso ao banco quebrava o caso de rodar contra a nuvem localmente por
+ * HTTP: o login parecia dar certo e nada funcionava depois.
+ *
+ * Atras do proxy do Render a URL chega como http, e quem diz a verdade e o
+ * cabecalho `x-forwarded-proto`.
+ */
+function ehHttps(c: Context): boolean {
+  const encaminhado = c.req.header('x-forwarded-proto');
+  if (encaminhado) return encaminhado.split(',')[0]!.trim() === 'https';
+  return new URL(c.req.url).protocol === 'https:';
+}
+
 export function abrirSessao(c: Context): void {
   const expiraEm = Date.now() + DURACAO_SEGUNDOS * 1000;
   const carga = String(expiraEm);
 
   setCookie(c, NOME_COOKIE, `${carga}.${assinar(carga)}`, {
     httpOnly: true,
-    // Em localhost o cookie nao pode ser Secure, senao o navegador o descarta
-    // e o login parece falhar sem dar erro.
-    secure: !ehBancoLocal(),
+    secure: ehHttps(c),
     sameSite: 'Lax',
     path: '/',
     maxAge: DURACAO_SEGUNDOS,
