@@ -18,15 +18,16 @@ expira em 30 dias — nunca use ele). Sem ESLint/Prettier.
 ## Comandos
 
 ```bash
-npm run dev        # Vite + API juntos
-npm run build      # typecheck dos dois lados + build do app e do servidor
-npm run teste:sync # teste de sincronização contra Postgres em memória
-npm start          # o que o Render executa
-npm run segredo    # gera o SESSAO_SEGREDO
+npm run dev          # Vite + API juntos
+npm run build        # typecheck dos dois lados + build do app e do servidor
+npm run teste:sync   # sincronização, contra Postgres em memória
+npm run teste:contas # centavos, ciclo, contagem dupla, previsão, categorização
+npm start            # o que o Render executa
+npm run segredo      # gera o SESSAO_SEGREDO
 ```
 
-`npm run build` e `npm run teste:sync` são as únicas verificações automáticas.
-Rode as duas antes de dar qualquer mudança por concluída.
+`build`, `teste:sync` e `teste:contas` são as únicas verificações automáticas.
+Rode as três antes de dar qualquer mudança por concluída.
 
 ## Invariantes — quebrar qualquer uma destas é bug
 
@@ -39,15 +40,32 @@ Rode as duas antes de dar qualquer mudança por concluída.
 4. **O autopreenchimento preenche campo vazio e nunca sobrescreve o digitado.**
    Sobrescrever corromperia o preço de prateleira no histórico.
 5. **Nenhum componente fala com o Dexie.** Todo acesso passa por
-   `src/dados/compras.ts`, que é quem carimba `atualizadoEm` e `pendente = 1`.
-   Escrita fora dali não sobe para a nuvem, e o sintoma só aparece semanas
-   depois.
+   `src/dados/compras.ts` ou `src/dados/financas.ts` — as duas portas, e mais
+   nenhuma. Elas carimbam `atualizadoEm` e `pendente = 1` (o `carimbo()` mora
+   em `banco.ts` para as duas usarem o mesmo). Escrita fora dali não sobe para a
+   nuvem, e o sintoma só aparece semanas depois.
 6. **Nada é apagado de verdade.** Excluir carimba `excluidoEm`; toda consulta
    ignora quem está na lápide.
 7. **`pendente` é 0/1, não booleano nem `null`.** O IndexedDB não indexa
    booleano nem nulo — a fila de envio ficaria invisível.
 8. **`/api/*` responde sempre JSON, nunca HTML.** O cliente trata resposta
    não-JSON como sessão expirada; um 404 em HTML mandaria você fazer login.
+9. **Nada do lado financeiro é obrigatório (Princípio 0).** Quem nunca cadastrou
+   conta nem renda vê a tela inicial e o formulário de compra **idênticos** aos
+   de antes da v2 — sem ícone a mais, sem linha de previsão, sem aviso de
+   "configure alguma coisa". A visibilidade vem do DADO, não de preferência.
+10. **Compra no crédito não sai do caixa; a fatura sai.** Pagar a fatura é
+    `Transferencia`, e ela nunca conta como gasto novo — o gasto foi contado
+    quando a compra foi lançada. Somar os dois é a contagem dupla que o
+    `teste:contas` existe para impedir.
+11. **A soma das parcelas é exatamente o total.** R$ 100,00 em 3x são
+    33,34 + 33,33 + 33,33; a primeira absorve o resto. Nunca 99,99.
+12. **Renda recorrente é versionada, nunca editada retroativamente.** Aumento
+    encerra a antiga e cria a nova; editar o valor no lugar reescreveria todos
+    os meses anteriores em silêncio.
+13. **`compartilhado/planos.ts` é a única fonte dos limites de plano.** Nada de
+    `if (plano === 'pago')` espalhado. E só a IA é barrada no servidor: o resto
+    é porteira de tela, assumido por escrito.
 
 ## Convenções
 
@@ -69,3 +87,13 @@ Rode as duas antes de dar qualquer mudança por concluída.
 - Falha de rede **não** tranca o app. A tela de senha só aparece quando o
   servidor diz explicitamente que não há sessão. Ver `src/estado.tsx`.
 - Nenhum segredo no repositório nem no cofre — só onde ele mora.
+- **O `.env` local aponta para o Neon de PRODUÇÃO.** Para mexer no app sem
+  tocar nos dados reais, suba com as variáveis vazias — elas vencem o arquivo,
+  porque `process.loadEnvFile` não sobrescreve o que já existe no ambiente:
+  `DATABASE_URL= SENHA_HASH= SESSAO_SEGREDO= PGLITE_DIR=/tmp/pg npm run dev`.
+- **Depois de publicar, rode `npm run banco:criar` contra o Neon.** As tabelas
+  da v2 não existem lá, e sem elas `/api/sync` responde "relation does not
+  exist". O app segue funcionando no aparelho, mas nada sobe.
+- **`esquema.sql` é dividido em comandos por `comandosDoEsquema`**, que tira os
+  comentários antes de quebrar no `;`. Um ponto e vírgula dentro de comentário
+  partia o arquivo no lugar errado e derrubava a subida do servidor.
