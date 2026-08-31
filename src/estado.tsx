@@ -24,6 +24,7 @@ import {
   type ReactNode,
 } from 'react';
 import { FalhaDeRede, SemSessao, entrar, sair, verificarSessao } from './dados/api';
+import type { Plano } from '../compartilhado/planos';
 import { contarPendentes, sincronizar, ultimaSincronizacao } from './dados/sincronizacao';
 
 export type Acesso = 'verificando' | 'liberado' | 'bloqueado';
@@ -34,6 +35,13 @@ interface Estado {
   /** O servidor esta inalcançavel: trabalhando so no aparelho. */
   offline: boolean;
   iaLigada: boolean;
+  /**
+   * Plano do usuario, vindo do servidor. Independente de `iaLigada`: um plano
+   * pago sem chave configurada mostra "indisponivel", e o gratis mostra "recurso
+   * do plano pago". Hoje a chave nao esta configurada, e nenhuma tela pode
+   * parecer quebrada por causa disso.
+   */
+  plano: Plano;
   situacao: Situacao;
   pendentes: number;
   ultimaEm: number | null;
@@ -56,6 +64,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
   const [acesso, setAcesso] = useState<Acesso>('verificando');
   const [offline, setOffline] = useState(false);
   const [iaLigada, setIaLigada] = useState(false);
+  const [plano, setPlano] = useState<Plano>('gratis');
   const [situacao, setSituacao] = useState<Situacao>('ocioso');
   const [pendentes, setPendentes] = useState(0);
   const [ultimaEm, setUltimaEm] = useState<number | null>(null);
@@ -107,6 +116,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
         const estado = await verificarSessao();
         if (!vivo) return;
         setIaLigada(estado.iaLigada);
+        setPlano(estado.plano ?? 'gratis');
         setAcesso(estado.autenticado ? 'liberado' : 'bloqueado');
         if (estado.autenticado) void sincronizarAgora();
       } catch (falha) {
@@ -148,6 +158,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     async (senha: string) => {
       const estado = await entrar(senha);
       setIaLigada(estado.iaLigada);
+      setPlano(estado.plano ?? 'gratis');
       setAcesso('liberado');
       setOffline(false);
       void sincronizarAgora();
@@ -162,10 +173,10 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
 
   const valor = useMemo<Estado>(
     () => ({
-      acesso, offline, iaLigada, situacao, pendentes, ultimaEm, mensagem,
+      acesso, offline, iaLigada, plano, situacao, pendentes, ultimaEm, mensagem,
       sincronizarAgora, autenticar, encerrarSessao, atualizarPendentes,
     }),
-    [acesso, offline, iaLigada, situacao, pendentes, ultimaEm, mensagem,
+    [acesso, offline, iaLigada, plano, situacao, pendentes, ultimaEm, mensagem,
      sincronizarAgora, autenticar, encerrarSessao, atualizarPendentes],
   );
 

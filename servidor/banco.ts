@@ -67,6 +67,25 @@ export function ehBancoLocal(): boolean {
   return !process.env.DATABASE_URL?.trim();
 }
 
+/**
+ * Quebra `esquema.sql` nos comandos individuais.
+ *
+ * Tira os comentarios ANTES de dividir no ponto e virgula. Sem isso, um simples
+ * ponto e virgula dentro de um comentario parte o arquivo no lugar errado e o
+ * Postgres recebe prosa como se fosse SQL — erro de sintaxe apontando para uma
+ * linha que nem e comando. Como o esquema e aplicado na subida do servidor, o
+ * estrago seria um deploy que nao sobe por causa de pontuacao.
+ */
+export function comandosDoEsquema(sql: string): string[] {
+  return sql
+    .split('\n')
+    .filter((linha) => !linha.trimStart().startsWith('--'))
+    .join('\n')
+    .split(';')
+    .map((comando) => comando.trim())
+    .filter(Boolean);
+}
+
 /** BIGINT chega como string; timestamps e centavos precisam voltar a ser numero. */
 export function numero(valor: unknown): number {
   return typeof valor === 'number' ? valor : Number(valor);

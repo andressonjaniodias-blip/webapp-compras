@@ -15,10 +15,11 @@ import { readFile } from 'node:fs/promises';
 import { carregarAmbiente } from './ambiente';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { EnvioSincronizacao } from '../compartilhado/tipos';
-import { banco, ehBancoLocal } from './banco';
-import { analisarMes, IaDesligada, iaLigada } from './dicas';
+import { limitesDo, planoValido, type Plano } from '../compartilhado/planos';
+import { banco, comandosDoEsquema, ehBancoLocal } from './banco';
+import { analisarMes, IaDesligada, iaLigada, proporRegras } from './dicas';
 import {
   abrirSessao,
   conferirConfiguracao,
@@ -34,12 +35,31 @@ carregarAmbiente();
 
 const app = new Hono();
 
+/**
+ * O plano do usuario.
+ *
+ * Hoje vem de variavel de ambiente, sem cobrança nenhuma implementada: e a
+ * costura onde a cobrança encaixa quando existirem contas de usuario. Quando
+ * isso acontecer, isto vira uma coluna e nenhuma tela precisa mudar.
+ *
+ * A unica coisa que este valor barra DE VERDADE e a IA, la embaixo, porque e a
+ * unica que custa dinheiro por uso. O resto dos limites e porteira de tela, e
+ * isso esta assumido por escrito em `compartilhado/planos.ts`.
+ */
+function planoAtual(): Plano {
+  return planoValido(process.env.PLANO?.trim());
+}
+
 app.get('/api/saude', (c) => c.json({ ok: true, acordadoEm: Date.now() }));
 
-app.get('/api/sessao', (c) => c.json({ autenticado: temSessao(c), iaLigada: iaLigada() }));
+app.get('/api/sessao', (c) =>
+  c.json({ autenticado: temSessao(c), iaLigada: iaLigada(), plano: planoAtual() }),
+);
 
 app.post('/api/sessao', async (c) => {
-  if (modoAberto()) return c.json({ autenticado: true, iaLigada: iaLigada() });
+  if (modoAberto()) {
+    return c.json({ autenticado: true, iaLigada: iaLigada(), plano: planoAtual() });
+  }
 
   const corpo = await c.req.json<{ senha?: string }>().catch(() => ({ senha: '' }));
   const guardado = process.env.SENHA_HASH?.trim() ?? '';
@@ -52,7 +72,7 @@ app.post('/api/sessao', async (c) => {
   }
 
   abrirSessao(c);
-  return c.json({ autenticado: true, iaLigada: iaLigada() });
+  return c.json({ autenticado: true, iaLigada: iaLigada(), plano: planoAtual() });
 });
 
 app.delete('/api/sessao', (c) => {
@@ -66,7 +86,26 @@ app.post('/api/sync', exigirSessao, async (c) => {
   return c.json(resposta);
 });
 
+/**
+ * A UNICA trava de plano que precisa ser real.
+ *
+ * A previsao, o simulador e as metas custam zero para servir — o calculo roda no
+ * aparelho. A analise da Anthropic custa por chamada, e por isso e ela que e
+ * barrada aqui, antes de qualquer requisicao a API. 402 e o codigo certo:
+ * "existe, mas exige pagamento".
+ */
+function exigirPlanoPago(c: Context) {
+  if (limitesDo(planoAtual()).ia) return null;
+  return c.json(
+    { erro: 'As análises de IA fazem parte do plano pago.', plano: planoAtual() },
+    402,
+  );
+}
+
 app.post('/api/dicas', exigirSessao, async (c) => {
+  const barrado = exigirPlanoPago(c);
+  if (barrado) return barrado;
+
   const { mes } = await c.req.json<{ mes?: string }>();
   if (!mes) return c.json({ erro: 'Informe o mês.' }, 400);
 
@@ -75,6 +114,27 @@ app.post('/api/dicas', exigirSessao, async (c) => {
   } catch (falha) {
     if (falha instanceof IaDesligada) return c.json({ erro: falha.message }, 503);
     const mensagem = falha instanceof Error ? falha.message : 'Falha ao analisar o mês.';
+    return c.json({ erro: mensagem }, 500);
+  }
+});
+
+/**
+ * A IA propoe REGRAS de categoria, e nao a categoria de cada compra.
+ *
+ * Categorizar lançamento a lançamento custaria uma chamada de API por compra e
+ * nao funcionaria offline. Aqui ela le o historico uma vez e devolve regras que
+ * o usuario revisa: uma chamada, beneficio permanente, e o resultado continua
+ * valendo sem internet depois.
+ */
+app.post('/api/regras', exigirSessao, async (c) => {
+  const barrado = exigirPlanoPago(c);
+  if (barrado) return barrado;
+
+  try {
+    return c.json({ regras: await proporRegras() });
+  } catch (falha) {
+    if (falha instanceof IaDesligada) return c.json({ erro: falha.message }, 503);
+    const mensagem = falha instanceof Error ? falha.message : 'Falha ao propor regras.';
     return c.json({ erro: mensagem }, 500);
   }
 });
@@ -104,9 +164,7 @@ async function subir(): Promise<void> {
     // sem nenhum passo manual. Todos os comandos sao IF NOT EXISTS.
     const consultar = await banco();
     const esquema = await readFile(new URL('../esquema.sql', import.meta.url), 'utf8');
-    for (const comando of esquema.split(';')) {
-      if (comando.trim()) await consultar(comando);
-    }
+    for (const comando of comandosDoEsquema(esquema)) await consultar(comando);
     console.log('Banco local em .dados/postgres (sem DATABASE_URL configurada).');
     if (modoAberto()) console.log('MODO ABERTO: sem senha. Só vale em desenvolvimento.');
   }
@@ -114,6 +172,7 @@ async function subir(): Promise<void> {
   const porta = Number(process.env.PORT ?? 8787);
   serve({ fetch: app.fetch, port: porta });
   console.log(`Servidor ouvindo em http://localhost:${porta}`);
+  console.log(`Plano: ${planoAtual()} (variavel PLANO; sem cobrança implementada)`);
   console.log(`Dicas de IA: ${iaLigada() ? 'ligadas' : 'desligadas (sem ANTHROPIC_API_KEY)'}`);
 }
 

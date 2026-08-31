@@ -19,9 +19,15 @@
  * total, o R$ 14,99 da prateleira viraria R$ 15,00 (1852 / 1,235 = 1499,6) e o
  * historico de precos — que alimenta a comparacao entre meses e as dicas —
  * ficaria contaminado por um numero que nunca existiu.
+ *
+ * Sobre o teclado: antes, digitar "arr" e apertar Enter GRAVAVA um item chamado
+ * "arr", porque o Enter enviava o formulario com a sugestao aberta. Agora as
+ * setas navegam, Enter escolhe a sugestao destacada e Esc fecha; o Enter so
+ * envia quando nao ha nada destacado.
  */
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from './CampoDinheiro';
 import { SugestoesItem } from './SugestoesItem';
 import { UNIDADES, UNIDADE_PADRAO } from '../../compartilhado/constantes';
@@ -30,7 +36,8 @@ import {
   calcularTotalItem,
   divergenciaSuspeita,
 } from '../../compartilhado/tipos';
-import type { ItemLocal } from '../dados/banco';
+import type { EntradaCatalogo, ItemLocal } from '../dados/banco';
+import { sugerir } from '../dados/catalogo';
 import { formatarQuantidade, formatarReais, paraQuantidade } from '../lib/dinheiro';
 
 export interface ValoresFormItem {
@@ -46,9 +53,11 @@ interface Props {
   /** Preenchido quando o formulario esta editando um item ja lançado. */
   itemInicial?: ItemLocal;
   onCancelar?: () => void;
+  /** Categoria da compra: itens dela vem na frente das sugestoes. */
+  categoria?: string;
 }
 
-export function FormItem({ onSalvar, itemInicial, onCancelar }: Props) {
+export function FormItem({ onSalvar, itemInicial, onCancelar, categoria }: Props) {
   const editando = itemInicial !== undefined;
 
   const [nome, setNome] = useState(itemInicial?.nome ?? '');
@@ -59,6 +68,7 @@ export function FormItem({ onSalvar, itemInicial, onCancelar }: Props) {
   const [preco, setPreco] = useState(itemInicial?.precoUnitario ?? 0);
   const [total, setTotal] = useState(itemInicial?.total ?? 0);
   const [focoNoNome, setFocoNoNome] = useState(false);
+  const [destacado, setDestacado] = useState(-1);
   const [salvando, setSalvando] = useState(false);
 
   // Quais campos o usuario ja mexeu. Editar um item existente comeca com tudo
@@ -67,6 +77,18 @@ export function FormItem({ onSalvar, itemInicial, onCancelar }: Props) {
 
   const campoNome = useRef<HTMLInputElement>(null);
   const quantidade = paraQuantidade(quantidadeTexto);
+
+  const sugestoes = useLiveQuery(
+    () => (focoNoNome ? sugerir(nome, 6, categoria) : Promise.resolve([])),
+    [nome, focoNoNome, categoria],
+    [] as EntradaCatalogo[],
+  );
+
+  // Digitar muda a lista, e o destaque tem que voltar para o inicio — senao o
+  // Enter escolheria a terceira sugestao de uma lista que ja e outra.
+  useEffect(() => {
+    setDestacado(-1);
+  }, [nome, focoNoNome]);
 
   function aoMudarQuantidade(texto: string) {
     setQuantidadeTexto(texto);
@@ -91,17 +113,48 @@ export function FormItem({ onSalvar, itemInicial, onCancelar }: Props) {
     }
   }
 
-  function usarSugestao(nomeItem: string, unid: string, qtd: number, precoUnit: number) {
-    setNome(nomeItem);
-    setUnidade(unid);
-    const quantidadeUsada = qtd || 1;
+  function usarSugestao(entrada: EntradaCatalogo) {
+    setNome(entrada.nome);
+    setUnidade(entrada.unidade);
+    const quantidadeUsada = entrada.ultimaQuantidade || 1;
     setQuantidadeTexto(formatarQuantidade(quantidadeUsada));
-    setPreco(precoUnit);
-    setTotal(calcularTotalItem(quantidadeUsada, precoUnit));
+    setPreco(entrada.ultimoPreco);
+    setTotal(calcularTotalItem(quantidadeUsada, entrada.ultimoPreco));
     // Veio do catalogo, nao de voce: os campos seguem "nao tocados" para que
     // corrigir qualquer um deles ainda ajuste os outros sozinho.
     setTocado({ preco: false, total: false });
     setFocoNoNome(false);
+    setDestacado(-1);
+  }
+
+  /** Setas, Enter e Esc na caixa de nome. */
+  function aoTeclarNoNome(evento: KeyboardEvent<HTMLInputElement>) {
+    if (!focoNoNome || sugestoes.length === 0) return;
+
+    if (evento.key === 'ArrowDown') {
+      evento.preventDefault();
+      setDestacado((atual) => (atual + 1) % sugestoes.length);
+    } else if (evento.key === 'ArrowUp') {
+      evento.preventDefault();
+      setDestacado((atual) => (atual <= 0 ? sugestoes.length - 1 : atual - 1));
+    } else if (evento.key === 'Escape') {
+      evento.preventDefault();
+      setFocoNoNome(false);
+      setDestacado(-1);
+    } else if (evento.key === 'Enter') {
+      /**
+       * O Enter NUNCA envia o formulario por baixo da lista aberta.
+       *
+       * Era assim que digitar "arr" e apertar Enter gravava um item chamado
+       * "arr": a pessoa queria aceitar a sugestao e o formulario enviava o texto
+       * cru. Com a lista aberta, o Enter escolhe o que estiver destacado ou —
+       * se nada estiver — apenas fecha a lista. O segundo Enter envia, e ai a
+       * intencao de gravar aquele nome mesmo ficou explicita.
+       */
+      evento.preventDefault();
+      if (destacado >= 0) usarSugestao(sugestoes[destacado]!);
+      else setFocoNoNome(false);
+    }
   }
 
   const calculado = calcularTotalItem(quantidade, preco);
@@ -132,26 +185,30 @@ export function FormItem({ onSalvar, itemInicial, onCancelar }: Props) {
 
   return (
     <form className="form-item" onSubmit={aoEnviar}>
-      <input
-        ref={campoNome}
-        className="entrada"
-        type="text"
-        autoComplete="off"
-        placeholder="Nome do item"
-        aria-label="Nome do item"
-        value={nome}
-        onChange={(e) => setNome(e.target.value)}
-        onFocus={() => setFocoNoNome(true)}
-        onBlur={() => setFocoNoNome(false)}
-      />
+      {/* `relative` ancora a lista de sugestoes, que e sobreposta e nao empurra
+          os campos de baixo enquanto voce digita. */}
+      <div className="campo-com-sugestoes">
+        <input
+          ref={campoNome}
+          className="entrada"
+          type="text"
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={focoNoNome && sugestoes.length > 0}
+          aria-autocomplete="list"
+          placeholder="Nome do item"
+          aria-label="Nome do item"
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          onFocus={() => setFocoNoNome(true)}
+          onBlur={() => setFocoNoNome(false)}
+          onKeyDown={aoTeclarNoNome}
+        />
 
-      <SugestoesItem
-        termo={nome}
-        aberto={focoNoNome}
-        onEscolher={(entrada) =>
-          usarSugestao(entrada.nome, entrada.unidade, entrada.ultimaQuantidade, entrada.ultimoPreco)
-        }
-      />
+        {focoNoNome && (
+          <SugestoesItem sugestoes={sugestoes} destacado={destacado} onEscolher={usarSugestao} />
+        )}
+      </div>
 
       <div className="grade-item">
         <div>

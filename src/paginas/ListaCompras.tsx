@@ -6,12 +6,21 @@
  * confirmacao nem status de "aberta": no mercado, o caminho entre pegar o
  * celular e digitar o primeiro item precisa ter o menor numero possivel de
  * toques.
+ *
+ * PRINCÍPIO 0: para quem nunca cadastrou conta nem entrada, esta tela e
+ * exatamente a de antes da v2 — sem linha de previsao, sem icone a mais, sem
+ * aviso de "configure alguma coisa". A linha de previsao so nasce quando ha
+ * renda cadastrada, e ela existe porque informacao que so aparece quando a
+ * pessoa vai procurar nao muda decisao nenhuma.
  */
 
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { criarCompra, listarCompras } from '../dados/compras';
 import type { CompraLocal } from '../dados/banco';
+import { useFinanceiro } from '../dados/financeiro';
+import { limitesDo } from '../../compartilhado/planos';
+import { panorama } from '../../compartilhado/previsao';
 import { formatarReais } from '../lib/dinheiro';
 import { chaveMes, formatarData, nomeMes } from '../lib/datas';
 import { useApp } from '../estado';
@@ -19,8 +28,11 @@ import { BarraSituacao } from '../componentes/BarraSituacao';
 
 export function ListaCompras() {
   const navegar = useNavigate();
-  const { atualizarPendentes } = useApp();
+  const { atualizarPendentes, plano } = useApp();
   const compras = useLiveQuery(listarCompras, [], undefined);
+  const financeiro = useFinanceiro();
+
+  const apelidos = new Map(financeiro.dados.contas.map((c) => [c.id, c.apelido]));
 
   async function nova() {
     const id = await criarCompra();
@@ -33,6 +45,16 @@ export function ListaCompras() {
       <header className="topo">
         <div className="topo-linha">
           <h1>Compras</h1>
+          {financeiro.mostrar && (
+            <button
+              type="button"
+              className="botao-icone"
+              aria-label="Carteira"
+              onClick={() => navegar('/carteira')}
+            >
+              💳
+            </button>
+          )}
           <button
             type="button"
             className="botao-icone"
@@ -51,6 +73,13 @@ export function ListaCompras() {
           </button>
         </div>
         <BarraSituacao />
+        {financeiro.mostrar && financeiro.temRenda && (
+          <LinhaDePrevisao
+            financeiro={financeiro}
+            plano={plano}
+            onTocar={() => navegar('/simular')}
+          />
+        )}
       </header>
 
       {compras === undefined && <p className="carregando">Carregando…</p>}
@@ -64,7 +93,9 @@ export function ListaCompras() {
       )}
 
       {compras !== undefined && compras.length > 0 && (
-        <ul className="lista">{linhas(compras, (id) => navegar('/compra/' + id))}</ul>
+        <ul className="lista">
+          {linhas(compras, apelidos, (id) => navegar('/compra/' + id))}
+        </ul>
       )}
 
       <div className="rodape">
@@ -77,10 +108,57 @@ export function ListaCompras() {
 }
 
 /**
+ * A previsao onde ela muda decisao: na tela que voce ja abre.
+ *
+ * Uma linha so, tocavel, levando ao simulador. E o caminho mais curto entre
+ * pegar o celular na frente da prateleira e saber se da.
+ */
+function LinhaDePrevisao({
+  financeiro,
+  plano,
+  onTocar,
+}: {
+  financeiro: ReturnType<typeof useFinanceiro>;
+  plano: ReturnType<typeof useApp>['plano'];
+  onTocar: () => void;
+}) {
+  const limites = limitesDo(plano);
+  const visao = panorama(financeiro.dados, {
+    meses: Math.max(12, limites.mesesDePrevisao),
+    agora: Date.now(),
+    gastoManual: financeiro.gastoManual,
+  });
+
+  const apertado = visao.mesMaisApertado;
+  const mostraAperto = apertado !== null && apertado.saldoAcumulado < visao.carteira.saldoEmConta;
+
+  return (
+    <button type="button" className="previsao-linha" onClick={onTocar}>
+      <span>
+        sobra prevista deste mês{' '}
+        <strong className={visao.sobraDoMes < 0 ? 'subiu' : ''}>
+          {formatarReais(visao.sobraDoMes)}
+        </strong>
+      </span>
+      {mostraAperto && (
+        <span className="previsao-aperto">
+          aperto em {nomeMes(apertado.mes).slice(0, 3)}{' '}
+          {limites.simuladorCompleto ? formatarReais(apertado.saldoAcumulado) : ''}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/**
  * Insere um cabeçalho quando o mes muda. Sem isso, uma lista longa vira um
  * borrao de datas e nao da para achar "aquela compra de julho".
  */
-function linhas(compras: readonly CompraLocal[], abrir: (id: string) => void) {
+function linhas(
+  compras: readonly CompraLocal[],
+  apelidos: ReadonlyMap<string, string>,
+  abrir: (id: string) => void,
+) {
   const saida: React.ReactNode[] = [];
   let mesAnterior = '';
 
@@ -95,6 +173,9 @@ function linhas(compras: readonly CompraLocal[], abrir: (id: string) => void) {
       );
     }
 
+    const conta = compra.contaId ? apelidos.get(compra.contaId) : undefined;
+    const vezes = compra.parcelas ?? 1;
+
     saida.push(
       <li key={compra.id}>
         <button type="button" className="compra" onClick={() => abrir(compra.id)}>
@@ -103,7 +184,8 @@ function linhas(compras: readonly CompraLocal[], abrir: (id: string) => void) {
               {compra.descricao || compra.categoria}
             </div>
             <div className="compra-meta">
-              {formatarData(compra.data)} · {compra.formaPagamento}
+              {formatarData(compra.data)} · {conta ?? compra.formaPagamento}
+              {vezes > 1 && ` · ${vezes}x`}
               {compra.qtdItens > 0
                 ? ` · ${compra.qtdItens} ${compra.qtdItens === 1 ? 'item' : 'itens'}`
                 : ' · sem itens'}

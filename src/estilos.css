@@ -468,3 +468,225 @@ textarea.entrada {
   margin: 0 auto;
   padding: 18vh 20px 20px;
 }
+
+/* ------------------------------------------------ o lado financeiro (v2) */
+
+/*
+ * A lista de sugestoes agora e SOBREPOSTA. No fluxo normal ela empurrava
+ * quantidade, preco e total ~300px para baixo enquanto voce digitava, e eles
+ * pulavam de volta ao fechar — campo que se mexe embaixo do dedo faz errar o
+ * toque.
+ */
+.campo-com-sugestoes {
+  position: relative;
+}
+
+.campo-com-sugestoes .sugestoes {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 292px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  background: var(--superficie-alta);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.sugestao-destacada {
+  border-color: var(--acento);
+  background: var(--acento-escuro);
+}
+
+.sugestao-antes {
+  color: var(--texto-fraco);
+  font-weight: 400;
+}
+
+/* A linha de previsao na tela inicial: o caminho mais curto entre pegar o
+   celular na prateleira e saber se da. */
+.previsao-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.previsao-aperto {
+  color: var(--aviso);
+  white-space: nowrap;
+}
+
+/* Tabela larga rola dentro de si mesma; o corpo da pagina nunca rola de lado. */
+.rolagem {
+  overflow-x: auto;
+  margin: 12px 0;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie);
+}
+
+.previsao {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.previsao th,
+.previsao td {
+  padding: 7px 10px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--borda);
+}
+
+.previsao thead th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--texto-fraco);
+  font-weight: 500;
+  background: var(--superficie-alta);
+}
+
+.previsao th:first-child,
+.previsao thead th:first-child {
+  text-align: left;
+}
+
+.previsao tbody tr:last-child th,
+.previsao tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.previsao-apertado {
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.previsao-parcial {
+  color: var(--texto-fraco);
+  font-weight: 400;
+  font-size: 0.75rem;
+}
+
+/* O grátis mostra que existe resposta e esconde o numero. O calculo e real. */
+.previsao-oculta th {
+  color: var(--texto-fraco);
+}
+
+.previsao-borrado {
+  color: var(--borda);
+  letter-spacing: 0.4em;
+  text-align: center;
+}
+
+.selo-plano {
+  background: var(--superficie-alta);
+  color: var(--aviso);
+  border: 1px solid var(--aviso);
+  margin-right: 6px;
+}
+
+/* Situacao da fatura, de relance. */
+.selo-aberta { background: var(--superficie-alta); color: var(--texto-fraco); }
+.selo-fechada { background: var(--superficie-alta); color: var(--aviso); }
+.selo-paga { background: var(--acento-escuro); color: var(--acento); }
+
+/* O veredito do simulador — a resposta em uma linha. */
+.veredito {
+  border-radius: var(--raio);
+  padding: 14px 16px;
+  margin: 12px 0;
+  border: 1px solid var(--borda);
+}
+
+.veredito strong {
+  display: block;
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+
+.veredito p {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  color: var(--texto-fraco);
+}
+
+.veredito-cabe { border-color: var(--acento); background: var(--acento-escuro); }
+.veredito-cabe strong { color: var(--acento); }
+.veredito-aperta { border-color: var(--aviso); background: rgba(251, 191, 36, 0.1); }
+.veredito-aperta strong { color: var(--aviso); }
+.veredito-estoura { border-color: var(--perigo); background: rgba(248, 113, 113, 0.1); }
+.veredito-estoura strong { color: var(--perigo); }
+
+/* Chips: a fileira das mais usadas por voce, e o "+" de opcao nova. */
+.chips-destaque {
+  margin-bottom: 6px;
+}
+
+.chip-novo {
+  font-size: 1.2rem;
+  line-height: 1;
+  padding-left: 14px;
+  padding-right: 14px;
+  color: var(--texto-fraco);
+}
+
+/* O motivo do palpite de categoria. Some assim que voce toca nos chips. */
+.dica-palpite {
+  color: var(--acento);
+}
+
+.cartao-exemplo {
+  opacity: 0.75;
+  border-style: dashed;
+}
+
+.interruptor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--toque);
+  cursor: pointer;
+}
+
+.interruptor input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--acento);
+}
+
+/* Botao que parece link, para acao secundaria dentro de um texto. */
+.link {
+  background: none;
+  border: none;
+  color: var(--acento);
+  font: inherit;
+  text-decoration: underline;
+  padding: 0;
+  cursor: pointer;
+}
+
+.veredito-ressalva {
+  margin-top: 8px !important;
+  padding-top: 8px;
+  border-top: 1px solid var(--borda);
+  font-size: 0.82rem !important;
+}

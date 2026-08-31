@@ -11,25 +11,59 @@
  * versao vem de uma sequence do Postgres: estritamente crescente e imune a
  * relogio errado.
  *
- * Limitacao aceita conscientemente: editar a MESMA compra nos dois aparelhos,
+ * Limitacao aceita conscientemente: editar o MESMO registro nos dois aparelhos,
  * ambos offline, descarta a edicao mais antiga. Para um usuario so isso
  * praticamente nao acontece, e resolver de verdade (merge campo a campo ou
  * CRDT) custaria muito mais do que o problema vale aqui.
+ *
+ * As oito tabelas sao percorridas a partir de uma lista, e nao copiadas oito
+ * vezes: com copia, a nona tabela seria esquecida em um dos laços e o sintoma
+ * seria "os cartoes nao sobem", semanas depois.
  */
 
-import { banco, gravarConfig, lerConfig, type CompraLocal, type ItemLocal } from './banco';
+import { banco, gravarConfig, lerConfig } from './banco';
 import { reconstruirCatalogo } from './catalogo';
 import { chamarApi } from './api';
-import type {
-  Compra,
-  ComVersao,
-  EnvioSincronizacao,
-  Item,
-  RespostaSincronizacao,
-} from '../../compartilhado/tipos';
+import type { EnvioSincronizacao, RespostaSincronizacao } from '../../compartilhado/tipos';
 
 const CHAVE_CURSOR = 'cursorSincronizacao';
 const CHAVE_ULTIMA = 'ultimaSincronizacaoEm';
+
+/**
+ * As tabelas sincronizadas, na ordem em que sobem.
+ *
+ * Contas primeiro: se a rodada cair no meio, e melhor existir a conta sem a
+ * compra do que a compra apontando para uma conta que ninguem tem.
+ */
+const TABELAS = [
+  'contas',
+  'compras',
+  'itens',
+  'rendas',
+  'dividas',
+  'metas',
+  'transferencias',
+  'regras',
+] as const;
+
+type NomeTabela = (typeof TABELAS)[number];
+
+interface RegistroLocal {
+  id: string;
+  atualizadoEm: number;
+  versao: number;
+  pendente: 0 | 1;
+}
+
+function tabela(nome: NomeTabela) {
+  return banco[nome] as unknown as {
+    where: (indice: string) => { equals: (valor: number) => { count: () => Promise<number>; toArray: () => Promise<RegistroLocal[]> } };
+    get: (id: string) => Promise<RegistroLocal | undefined>;
+    put: (registro: RegistroLocal) => Promise<unknown>;
+    toArray: () => Promise<RegistroLocal[]>;
+    bulkPut: (registros: RegistroLocal[]) => Promise<unknown>;
+  };
+}
 
 export interface ResultadoSincronizacao {
   enviados: number;
@@ -39,9 +73,11 @@ export interface ResultadoSincronizacao {
 
 /** Quantos registros estao esperando para subir. */
 export async function contarPendentes(): Promise<number> {
-  const compras = await banco.compras.where('pendente').equals(1).count();
-  const itens = await banco.itens.where('pendente').equals(1).count();
-  return compras + itens;
+  let total = 0;
+  for (const nome of TABELAS) {
+    total += await tabela(nome).where('pendente').equals(1).count();
+  }
+  return total;
 }
 
 export function ultimaSincronizacao(): Promise<number | null> {
@@ -59,14 +95,21 @@ function semCamposLocais<T extends { versao: number; pendente: 0 | 1 }>(registro
 export async function sincronizar(): Promise<ResultadoSincronizacao> {
   const cursor = await lerConfig<number>(CHAVE_CURSOR, 0);
 
-  const comprasPendentes = await banco.compras.where('pendente').equals(1).toArray();
-  const itensPendentes = await banco.itens.where('pendente').equals(1).toArray();
+  const pendentes = {} as Record<NomeTabela, RegistroLocal[]>;
+  let enviados = 0;
 
-  const envio: EnvioSincronizacao = {
+  for (const nome of TABELAS) {
+    const lista = await tabela(nome).where('pendente').equals(1).toArray();
+    pendentes[nome] = lista;
+    enviados += lista.length;
+  }
+
+  const envio = {
     cursor,
-    compras: comprasPendentes.map(semCamposLocais) as Compra[],
-    itens: itensPendentes.map(semCamposLocais) as Item[],
-  };
+    ...Object.fromEntries(
+      TABELAS.map((nome) => [nome, pendentes[nome].map(semCamposLocais)]),
+    ),
+  } as unknown as EnvioSincronizacao;
 
   const resposta = await chamarApi<RespostaSincronizacao>('/sync', {
     method: 'POST',
@@ -80,14 +123,10 @@ export async function sincronizar(): Promise<ResultadoSincronizacao> {
 
   // Itens vindos de outro aparelho tambem precisam entrar nas sugestoes deste.
   // Como o catalogo e derivado, refazer inteiro e mais confiavel que aplicar
-  // delta — e barato o bastante para nao valer a complexidade do incremental.
+  // delta — e e barato o bastante para nao valer a complexidade do incremental.
   if (recebidos > 0) await reconstruirCatalogo();
 
-  return {
-    enviados: comprasPendentes.length + itensPendentes.length,
-    recebidos,
-    cursor: resposta.cursor,
-  };
+  return { enviados, recebidos, cursor: resposta.cursor };
 }
 
 /**
@@ -104,29 +143,24 @@ export async function sincronizar(): Promise<ResultadoSincronizacao> {
  */
 async function aplicarResposta(resposta: RespostaSincronizacao): Promise<number> {
   let aplicados = 0;
+  const bruta = resposta as unknown as Record<string, (RegistroLocal & { versao: number })[]>;
 
-  await banco.transaction('rw', banco.compras, banco.itens, async () => {
-    for (const remoto of resposta.compras) {
-      const local = await banco.compras.get(remoto.id);
-      if (local && local.atualizadoEm > remoto.atualizadoEm) continue;
-      await banco.compras.put(paraLocal<Compra, CompraLocal>(remoto));
-      aplicados += 1;
-    }
+  for (const nome of TABELAS) {
+    const remotos = bruta[nome] ?? [];
+    if (remotos.length === 0) continue;
 
-    for (const remoto of resposta.itens) {
-      const local = await banco.itens.get(remoto.id);
-      if (local && local.atualizadoEm > remoto.atualizadoEm) continue;
-      await banco.itens.put(paraLocal<Item, ItemLocal>(remoto));
-      aplicados += 1;
-    }
-  });
+    const alvo = tabela(nome);
+    await banco.transaction('rw', banco[nome], async () => {
+      for (const remoto of remotos) {
+        const local = await alvo.get(remoto.id);
+        if (local && local.atualizadoEm > remoto.atualizadoEm) continue;
+        await alvo.put({ ...remoto, pendente: 0 });
+        aplicados += 1;
+      }
+    });
+  }
 
   return aplicados;
-}
-
-function paraLocal<T extends object, L>(remoto: ComVersao<T>): L {
-  const { versao, ...dados } = remoto;
-  return { ...dados, versao, pendente: 0 } as L;
 }
 
 /**
@@ -137,12 +171,11 @@ function paraLocal<T extends object, L>(remoto: ComVersao<T>): L {
  * vez de perda definitiva.
  */
 export async function reenviarTudo(): Promise<ResultadoSincronizacao> {
-  await banco.transaction('rw', banco.compras, banco.itens, async () => {
-    const compras = await banco.compras.toArray();
-    const itens = await banco.itens.toArray();
-    await banco.compras.bulkPut(compras.map((c) => ({ ...c, pendente: 1 as const })));
-    await banco.itens.bulkPut(itens.map((i) => ({ ...i, pendente: 1 as const })));
-  });
+  for (const nome of TABELAS) {
+    const alvo = tabela(nome);
+    const todos = await alvo.toArray();
+    await alvo.bulkPut(todos.map((registro) => ({ ...registro, pendente: 1 as const })));
+  }
 
   return sincronizar();
 }

@@ -11,6 +11,8 @@
  *    quebraria com "Unexpected token <" — mensagem que nao ajuda ninguem.
  */
 
+import type { Plano } from '../../compartilhado/planos';
+
 const TEMPO_LIMITE = 90_000;
 
 /** Erro que significa "faça login de novo", nao "deu problema". */
@@ -77,6 +79,13 @@ export interface EstadoSessao {
   autenticado: boolean;
   /** Falso quando nao ha chave da Anthropic configurada no servidor. */
   iaLigada: boolean;
+  /**
+   * Plano do usuario. Independente de `iaLigada`: um plano pago sem chave
+   * configurada mostra "indisponivel no momento", enquanto o gratis mostra
+   * "recurso do plano pago". As duas mensagens sao diferentes de proposito,
+   * porque hoje a chave nao esta configurada e nada pode parecer quebrado.
+   */
+  plano: Plano;
 }
 
 export function verificarSessao(): Promise<EstadoSessao> {
@@ -105,8 +114,26 @@ export interface Dicas {
   resumo: string;
   achados: Achado[];
   sugestoes: string[];
+  previsao: string;
+  metas: string;
 }
 
 export function pedirDicas(mes: string): Promise<Dicas> {
   return chamarApi<Dicas>('/dicas', { method: 'POST', body: JSON.stringify({ mes }) });
+}
+
+export interface RegraProposta {
+  termo: string;
+  categoria: string;
+  motivo: string;
+}
+
+/**
+ * A IA le o historico uma vez e devolve regras de categoria para voce revisar.
+ *
+ * Nada e aplicado aqui: quem aceita e a tela. Uma chamada de API, beneficio
+ * permanente — o oposto de gastar uma chamada por lançamento.
+ */
+export function pedirRegras(): Promise<{ regras: RegraProposta[] }> {
+  return chamarApi<{ regras: RegraProposta[] }>('/regras', { method: 'POST' });
 }

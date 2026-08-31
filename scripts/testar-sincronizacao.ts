@@ -15,9 +15,19 @@ process.env.PGLITE_DIR = 'memory://';
 delete process.env.DATABASE_URL;
 
 import { readFile } from 'node:fs/promises';
-import { banco } from '../servidor/banco';
+import { banco, comandosDoEsquema } from '../servidor/banco';
 import { sincronizar } from '../servidor/sincronizacao';
-import type { Compra, EnvioSincronizacao, Item } from '../compartilhado/tipos';
+import type {
+  Compra,
+  Conta,
+  Divida,
+  EnvioSincronizacao,
+  Item,
+  Meta,
+  RegraCategoria,
+  Renda,
+  Transferencia,
+} from '../compartilhado/tipos';
 
 let falhas = 0;
 
@@ -41,6 +51,8 @@ function compraExemplo(id: string, atualizadoEm: number, total: number): Compra 
     totalManual: 0,
     total,
     qtdItens: 1,
+    contaId: null,
+    parcelas: 1,
     atualizadoEm,
     excluidoEm: null,
   };
@@ -62,14 +74,97 @@ function itemExemplo(id: string, compraId: string, atualizadoEm: number): Item {
   };
 }
 
+function contaExemplo(id: string, atualizadoEm: number, apelido = 'Nubank 4417'): Conta {
+  return {
+    id,
+    apelido,
+    tipo: 'credito',
+    diaFechamento: 20,
+    diaVencimento: 27,
+    limite: 500000,
+    saldoInicial: 0,
+    saldoInicialEm: 0,
+    ordem: 0,
+    atualizadoEm,
+    excluidoEm: null,
+  };
+}
+
+function rendaExemplo(id: string, atualizadoEm: number, valor = 300000): Renda {
+  return {
+    id,
+    data: Date.UTC(2026, 0, 5, 12, 0),
+    descricao: 'Salário',
+    origem: 'Salário',
+    valor,
+    periodicidade: 'mensal',
+    encerradoEm: null,
+    contaId: null,
+    atualizadoEm,
+    excluidoEm: null,
+  };
+}
+
+function dividaExemplo(id: string, atualizadoEm: number): Divida {
+  return {
+    id,
+    descricao: 'Financiamento da moto',
+    tipo: 'financiamento',
+    valorTotal: 1200000,
+    parcelas: 36,
+    primeiraEm: Date.UTC(2026, 6, 10, 12, 0),
+    observacao: '',
+    atualizadoEm,
+    excluidoEm: null,
+  };
+}
+
+function metaExemplo(id: string, atualizadoEm: number): Meta {
+  return {
+    id,
+    descricao: 'Moto',
+    valorAlvo: 1500000,
+    guardado: 200000,
+    reservaMensal: 40000,
+    prazoEm: null,
+    ordem: 0,
+    atualizadoEm,
+    excluidoEm: null,
+  };
+}
+
+function transferenciaExemplo(id: string, atualizadoEm: number, valor = 18520): Transferencia {
+  return {
+    id,
+    origemContaId: 'conta-corrente',
+    alvo: 'cartao',
+    alvoId: 'conta-1',
+    competencia: '2026-09',
+    data: Date.UTC(2026, 8, 27, 12, 0),
+    valor,
+    observacao: '',
+    atualizadoEm,
+    excluidoEm: null,
+  };
+}
+
+function regraExemplo(id: string, atualizadoEm: number): RegraCategoria {
+  return {
+    id,
+    termo: 'posto',
+    categoria: 'Combustível',
+    ordem: 0,
+    atualizadoEm,
+    excluidoEm: null,
+  };
+}
+
 const vazio = (cursor: number): EnvioSincronizacao => ({ cursor, compras: [], itens: [] });
 
 async function principal(): Promise<void> {
   const consultar = await banco();
   const esquema = await readFile('esquema.sql', 'utf8');
-  for (const comando of esquema.split(';')) {
-    if (comando.trim()) await consultar(comando);
-  }
+  for (const comando of comandosDoEsquema(esquema)) await consultar(comando);
 
   const T0 = Date.UTC(2026, 7, 3, 12, 0);
 
@@ -94,6 +189,7 @@ async function principal(): Promise<void> {
     typeof a1.compras[0]?.atualizadoEm === 'number',
     typeof a1.compras[0]?.atualizadoEm,
   );
+  conferir('as listas novas voltaram vazias, e nao ausentes', Array.isArray(a1.contas));
 
   console.log('\n2. Aparelho B, do zero, recebe tudo');
   const b1 = await sincronizar(vazio(0));
@@ -152,6 +248,110 @@ async function principal(): Promise<void> {
   });
   const compra2 = repetido.compras.find((c) => c.id === 'compra-2');
   conferir('ficou a versao mais recente do lote', compra2?.total === 200, String(compra2?.total));
+
+  console.log('\n9. As seis tabelas novas fazem a viagem de ida e volta');
+  const T1 = T0 + 500_000;
+  const novas = await sincronizar({
+    cursor: repetido.cursor,
+    compras: [],
+    itens: [],
+    contas: [contaExemplo('conta-1', T1)],
+    rendas: [rendaExemplo('renda-1', T1)],
+    dividas: [dividaExemplo('divida-1', T1)],
+    metas: [metaExemplo('meta-1', T1)],
+    transferencias: [transferenciaExemplo('transf-1', T1)],
+    regras: [regraExemplo('regra-1', T1)],
+  });
+  conferir('a conta voltou', novas.contas[0]?.apelido === 'Nubank 4417');
+  conferir('o dia de fechamento sobreviveu', novas.contas[0]?.diaFechamento === 20);
+  conferir('o limite voltou como numero', novas.contas[0]?.limite === 500000);
+  conferir('a renda voltou', novas.rendas[0]?.valor === 300000);
+  conferir('a periodicidade sobreviveu', novas.rendas[0]?.periodicidade === 'mensal');
+  conferir('encerradoEm voltou como null', novas.rendas[0]?.encerradoEm === null);
+  conferir('a divida voltou', novas.dividas[0]?.parcelas === 36);
+  conferir('a meta voltou', novas.metas[0]?.valorAlvo === 1500000);
+  conferir('prazoEm voltou como null', novas.metas[0]?.prazoEm === null);
+  conferir('a transferencia voltou', novas.transferencias[0]?.valor === 18520);
+  conferir('o alvo da transferencia sobreviveu', novas.transferencias[0]?.alvoId === 'conta-1');
+  conferir('a competencia sobreviveu', novas.transferencias[0]?.competencia === '2026-09');
+  conferir('a regra voltou', novas.regras[0]?.categoria === 'Combustível');
+
+  console.log('\n10. Conflito e lapide valem nas tabelas novas tambem');
+  const conflito = await sincronizar({
+    cursor: novas.cursor,
+    compras: [],
+    itens: [],
+    // Carimbo mais ANTIGO: tem que perder.
+    contas: [contaExemplo('conta-1', T1 - 60_000, 'Nome atrasado')],
+    rendas: [rendaExemplo('renda-1', T1 + 60_000, 340000)],
+  });
+  // Quando a edicao atrasada e ignorada, a versao NAO muda — entao o registro
+  // nem aparece na resposta do cursor. Conferir no estado, com um pull do zero,
+  // e a unica forma de distinguir "foi ignorada" de "nao voltou por acaso".
+  const estado = await sincronizar(vazio(0));
+  conferir(
+    'a edicao atrasada da conta foi ignorada',
+    estado.contas.find((c) => c.id === 'conta-1')?.apelido === 'Nubank 4417',
+    estado.contas.find((c) => c.id === 'conta-1')?.apelido,
+  );
+  conferir(
+    'e ela nao voltou como novidade no cursor',
+    conflito.contas.every((c) => c.id !== 'conta-1'),
+  );
+  conferir(
+    'o aumento de renda com carimbo novo venceu',
+    conflito.rendas.find((r) => r.id === 'renda-1')?.valor === 340000,
+  );
+
+  const T2 = T1 + 120_000;
+  const lapide = await sincronizar({
+    cursor: conflito.cursor,
+    compras: [],
+    itens: [],
+    metas: [{ ...metaExemplo('meta-1', T2), excluidoEm: T2 }],
+  });
+  conferir('a lapide da meta foi gravada', lapide.metas[0]?.excluidoEm === T2);
+
+  console.log('\n11. A compra carrega conta e parcelas ate o banco e de volta');
+  const T3 = T2 + 60_000;
+  const parcelada = await sincronizar({
+    cursor: lapide.cursor,
+    compras: [
+      {
+        ...compraExemplo('compra-3', T3, 120000),
+        contaId: 'conta-1',
+        parcelas: 12,
+        descricao: 'Geladeira',
+      },
+    ],
+    itens: [],
+  });
+  const geladeira = parcelada.compras.find((c) => c.id === 'compra-3');
+  conferir('contaId sobreviveu', geladeira?.contaId === 'conta-1', String(geladeira?.contaId));
+  conferir('parcelas sobreviveu', geladeira?.parcelas === 12, String(geladeira?.parcelas));
+
+  console.log('\n12. Aparelho antigo, que so conhece compras e itens, continua funcionando');
+  const antigo = await sincronizar({
+    cursor: 0,
+    compras: [compraExemplo('compra-4', T3 + 60_000, 500)],
+    itens: [],
+  } as EnvioSincronizacao);
+  conferir('o lote foi aceito sem as listas novas', antigo.compras.length > 0);
+  conferir('e o servidor devolveu as tabelas novas mesmo assim', antigo.contas.length === 1);
+
+  console.log('\n13. Um aparelho novo, do zero, recebe as oito tabelas');
+  const zerado = await sincronizar(vazio(0));
+  conferir('recebeu contas', zerado.contas.length === 1);
+  conferir('recebeu rendas', zerado.rendas.length === 1);
+  conferir('recebeu dividas', zerado.dividas.length === 1);
+  conferir('recebeu metas (inclusive a que esta na lapide)', zerado.metas.length === 1);
+  conferir('recebeu transferencias', zerado.transferencias.length === 1);
+  conferir('recebeu regras', zerado.regras.length === 1);
+  conferir(
+    'o cursor cobre a maior versao de todas as tabelas',
+    zerado.cursor === parcelada.cursor || zerado.cursor >= antigo.cursor,
+    'cursor=' + zerado.cursor,
+  );
 
   console.log('');
   if (falhas > 0) {

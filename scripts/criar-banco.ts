@@ -10,14 +10,13 @@ import { carregarAmbiente } from '../servidor/ambiente';
 
 carregarAmbiente();
 
-const { banco, ehBancoLocal } = await import('../servidor/banco');
+const { banco, comandosDoEsquema, ehBancoLocal } = await import('../servidor/banco');
 
 const consultar = await banco();
 const esquema = await readFile('esquema.sql', 'utf8');
 
 let aplicados = 0;
-for (const comando of esquema.split(';')) {
-  if (!comando.trim()) continue;
+for (const comando of comandosDoEsquema(esquema)) {
   await consultar(comando);
   aplicados += 1;
 }

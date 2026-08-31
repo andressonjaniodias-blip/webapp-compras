@@ -16,7 +16,8 @@
     "senha:hash": "tsx scripts/gerar-hash.ts",
     "segredo": "tsx scripts/gerar-segredo.ts",
     "icones": "tsx scripts/gerar-icones.ts",
-    "teste:sync": "tsx scripts/testar-sincronizacao.ts"
+    "teste:sync": "tsx scripts/testar-sincronizacao.ts",
+    "teste:contas": "tsx scripts/testar-contas.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.118.0",

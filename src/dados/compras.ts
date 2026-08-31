@@ -1,18 +1,19 @@
 /**
- * A UNICA porta de entrada do banco local. Nenhuma tela fala com o Dexie
- * direto.
+ * Uma das DUAS portas de entrada do banco local — a de compras e itens. A outra
+ * e `financas.ts`. Nenhuma tela fala com o Dexie direto.
  *
  * O motivo e concreto: toda escrita precisa carimbar `atualizadoEm` e marcar
  * `pendente = 1`, senao o registro nunca sobe para a nuvem. Se cada tela
  * escrevesse por conta propria, bastaria um formulario esquecer o carimbo para
  * a compra existir no celular e sumir do PC — e o sintoma apareceria semanas
- * depois, sem pista de origem.
+ * depois, sem pista de origem. O `carimbo()` vive em `banco.ts` justamente para
+ * as duas portas usarem o mesmo.
  *
  * Manter esse contrato num arquivo so tambem e o que vai permitir mexer na
  * sincronizacao sem reescrever tela nenhuma.
  */
 
-import { banco, type CompraLocal, type ItemLocal } from './banco';
+import { banco, carimbo, type CompraLocal, type ItemLocal } from './banco';
 import { registrarNoCatalogo } from './catalogo';
 import {
   calcularTotalCompra,
@@ -26,11 +27,6 @@ import {
   FORMA_PAGAMENTO_PADRAO,
   UNIDADE_PADRAO,
 } from '../../compartilhado/constantes';
-
-/** O que toda escrita precisa carimbar. */
-function carimbo(): { atualizadoEm: number; pendente: 1 } {
-  return { atualizadoEm: Date.now(), pendente: 1 };
-}
 
 export interface ValoresItem {
   nome: string;
@@ -60,19 +56,28 @@ export async function listarItens(compraId: string): Promise<ItemLocal[]> {
 }
 
 /**
- * Categoria e forma de pagamento da ultima compra, para ja virem preenchidas na
- * proxima. Quem compra no mesmo mercado toda semana nao deveria ter que
- * escolher "Mercado" e "Débito" toda vez.
+ * Categoria, forma de pagamento e conta da ultima compra, para ja virem
+ * preenchidas na proxima. Quem compra no mesmo mercado toda semana nao deveria
+ * ter que escolher "Mercado" e "Débito" toda vez.
+ *
+ * A conta segue a ULTIMA COMPRA COM A MESMA FORMA de pagamento, e nao a ultima
+ * compra qualquer: quem pagou no debito ontem e no credito hoje nao quer o
+ * cartao sugerido para o Pix de amanha.
  */
-export async function preferenciasRecentes(): Promise<{
+export async function preferenciasRecentes(formaPagamento?: string): Promise<{
   categoria: string;
   formaPagamento: string;
+  contaId: string | null;
 }> {
   const compras = await listarCompras();
   const ultima = compras[0];
+  const forma = formaPagamento ?? ultima?.formaPagamento ?? FORMA_PAGAMENTO_PADRAO;
+  const comMesmaForma = compras.find((c) => c.formaPagamento === forma && c.contaId);
+
   return {
     categoria: ultima?.categoria ?? CATEGORIA_PADRAO,
-    formaPagamento: ultima?.formaPagamento ?? FORMA_PAGAMENTO_PADRAO,
+    formaPagamento: forma,
+    contaId: comMesmaForma?.contaId ?? null,
   };
 }
 
@@ -92,6 +97,10 @@ export async function criarCompra(parcial: Partial<Compra> = {}): Promise<string
     totalManual: parcial.totalManual ?? 0,
     total: parcial.totalManual ?? 0,
     qtdItens: 0,
+    // Sem conta cadastrada isto fica `null` para sempre e a compra funciona
+    // igual — o lado financeiro e opcional, e nada aqui pode exigi-lo.
+    contaId: parcial.contaId ?? preferencias.contaId,
+    parcelas: parcial.parcelas ?? 1,
     excluidoEm: null,
     versao: 0,
     ...carimbo(),
@@ -213,7 +222,12 @@ async function recalcular(compraId: string): Promise<void> {
   });
 }
 
-/** O catalogo precisa da data da compra, nao da hora em que o item foi digitado. */
+/**
+ * O catalogo precisa da data da compra, nao da hora em que o item foi digitado.
+ *
+ * Leva junto a categoria: e por ela que os itens conseguem votar na categoria de
+ * uma compra futura ("dipirona, band-aid" -> Farmácia).
+ */
 async function alimentarCatalogo(item: ItemLocal): Promise<void> {
   const compra = await banco.compras.get(item.compraId);
   await registrarNoCatalogo({
@@ -222,5 +236,6 @@ async function alimentarCatalogo(item: ItemLocal): Promise<void> {
     precoUnitario: item.precoUnitario,
     quantidade: item.quantidade,
     data: compra?.data ?? item.atualizadoEm,
+    categoria: compra?.categoria ?? '',
   });
 }
