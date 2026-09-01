@@ -20,6 +20,7 @@ import { TabelaPrevisao } from '../componentes/TabelaPrevisao';
 import { limitesDo } from '../../compartilhado/planos';
 import { mesesAteAMetaMaisLonga, panorama } from '../../compartilhado/previsao';
 import { chaveDoMes } from '../../compartilhado/fatura';
+import { podeEnviar, podeReceber } from '../../compartilhado/tipos';
 import { gravarGastoManual } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
@@ -60,6 +61,10 @@ export function Carteira() {
   const visao = panorama(dados, { meses, agora, gastoManual });
   const { carteira, estimativa, linhas, mesMaisApertado } = visao;
   const mesAtual = chaveDoMes(agora);
+
+  const daParaTransferir = dados.contas
+    .filter(podeEnviar)
+    .some((e) => dados.contas.filter(podeReceber).some((r) => r.id !== e.id));
 
   const faturasEmAberto = carteira.compromissos
     .filter((c) => c.origem === 'cartao')
@@ -139,6 +144,18 @@ export function Carteira() {
                 <span className={saldo.saldo < 0 ? 'subiu' : ''}>{formatarReais(saldo.saldo)}</span>
               </div>
             ))}
+            {/* Fica junto dos saldos porque e exatamente o numero que ele muda. */}
+            {daParaTransferir && (
+              <div className="acoes">
+                <button
+                  type="button"
+                  className="botao botao-largo"
+                  onClick={() => navegar('/transferencias')}
+                >
+                  Transferir entre contas
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}

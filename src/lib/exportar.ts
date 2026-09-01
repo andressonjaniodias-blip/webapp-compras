@@ -268,7 +268,9 @@ export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void>
   ];
 
   const abaTransferencias: Celula[][] = [
-    cabecalho(['Data', 'Sai de', 'Para', 'Alvo', 'Competência', 'Valor', 'Observação']),
+    // Os rotulos seguem a ORDEM das celulas abaixo: primeiro o tipo do alvo,
+    // depois o nome dele. Estavam trocados, e a planilha dizia "Para: conta".
+    cabecalho(['Data', 'Sai de', 'Tipo', 'Para', 'Competência', 'Valor', 'Observação']),
     ...tudo.transferencias
       .slice()
       .sort((a, b) => a.data - b.data)

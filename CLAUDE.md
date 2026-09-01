@@ -79,7 +79,14 @@ Rode as três antes de dar qualquer mudança por concluída.
     recorrente recém-criada. O teto continua sendo o instante porque a previsão
     do mês corrente conta o que ainda vai cair e o saldo conta o que já caiu —
     arredondar o teto faria a mesma parcela ser contada nos dois lados.
-15. **`compartilhado/planos.ts` é a única fonte dos limites de plano.** Nada de
+15. **Quem envia e quem recebe transferência está em `compartilhado/tipos.ts`.**
+    Origem: corrente e dinheiro. Destino: corrente, dinheiro e vale — o vale
+    recebe (o benefício pode cair na corrente) mas nunca envia, porque o cartão
+    dele só paga compras. **Crédito fica fora dos dois lados**: mandar dinheiro
+    para um cartão é *pagar a fatura*, e pagamento precisa de `competencia` para
+    quitar o ciclo certo, coisa que só a tela da fatura faz. Aceitar isso como
+    transferência deixaria a fatura eternamente em aberto.
+16. **`compartilhado/planos.ts` é a única fonte dos limites de plano.** Nada de
     `if (plano === 'pago')` espalhado. E só a IA é barrada no servidor: o resto
     é porteira de tela, assumido por escrito.
 

@@ -106,6 +106,64 @@ export function temSaldo(conta: Conta): boolean {
   return conta.tipo !== 'credito';
 }
 
+/*
+ * A REGRA DAS TRANSFERENCIAS ENTRE CONTAS.
+ *
+ * Mora aqui, junto de `temSaldo`, porque e regra de conta e nao de tela: quem
+ * pergunta e o formulario, mas quem responde tem que ser um lugar so.
+ *
+ * As quatro razoes, que sao de vida real e nao de codigo:
+ *
+ * 1. O VALE NAO ENVIA. O beneficio chega num cartao de debito que so paga
+ *    compras — dele nao sai transferencia. Ele RECEBE porque acontece de o valor
+ *    cair na conta corrente, e ai transferir para o vale e o que deixa o dinheiro
+ *    registrado como vale, no lugar certo.
+ * 2. CREDITO FICA FORA DOS DOIS LADOS. Cartao de credito nao tem saldo, tem
+ *    fatura. Mandar dinheiro para ele E pagar a fatura, e pagamento precisa de
+ *    COMPETENCIA para quitar o ciclo certo — coisa que so a tela da fatura faz.
+ *    Aceitar aqui deixaria a fatura eternamente em aberto e o dinheiro sumido.
+ *    Esta e a unica das quatro que evita um NUMERO ERRADO, e nao so uma bobagem.
+ * 3. Origem diferente do destino.
+ * 4. Valor maior que zero.
+ */
+
+/** De onde da para TIRAR dinheiro numa transferencia. */
+export function podeEnviar(conta: Conta): boolean {
+  return conta.tipo === 'corrente' || conta.tipo === 'dinheiro';
+}
+
+/** Para onde da para MANDAR. O vale entra aqui, e so aqui. */
+export function podeReceber(conta: Conta): boolean {
+  return conta.tipo === 'corrente' || conta.tipo === 'dinheiro' || conta.tipo === 'vale';
+}
+
+/**
+ * `null` quer dizer que pode. Qualquer outra coisa e o motivo, ja no texto que a
+ * tela mostra.
+ *
+ * Devolver o motivo junto e proposital: uma regra que so responde `false` obriga
+ * a tela a adivinhar o porque, e e assim que a explicacao acaba divergindo da
+ * regra que ela explica.
+ */
+export function motivoParaNaoTransferir(
+  origem: Conta | undefined,
+  destino: Conta | undefined,
+  valor: number,
+): string | null {
+  if (!origem || !destino) return 'Escolha de onde sai e para onde vai.';
+  if (origem.id === destino.id) return 'A conta de origem e a de destino são a mesma.';
+  if (!podeEnviar(origem)) {
+    return origem.tipo === 'credito'
+      ? 'Cartão de crédito não tem saldo para enviar — ele acumula fatura.'
+      : 'O vale só paga compras; dele não sai transferência.';
+  }
+  if (!podeReceber(destino)) {
+    return 'Para pagar um cartão de crédito, use a fatura dele: o pagamento precisa saber qual mês está sendo quitado.';
+  }
+  if (valor <= 0) return 'Informe um valor maior que zero.';
+  return null;
+}
+
 /**
  * Dinheiro que entra.
  *

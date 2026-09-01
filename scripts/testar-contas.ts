@@ -54,6 +54,7 @@ import {
   type UsoDaDescricao,
 } from '../compartilhado/categorizacao';
 import { casaTermo, fatorDeRecencia, ordenarSugestoes } from '../compartilhado/sugestoes';
+import { motivoParaNaoTransferir } from '../compartilhado/tipos';
 import type {
   Compra,
   Conta,
@@ -342,6 +343,58 @@ console.log('\n5. Cada Pix sai da sua conta');
   igual('o saque tirou do Nubank', saldoDaConta(nubank, comSaque, T(2026, 9, 30)).saldo, 60000);
   igual('e entrou na espécie', saldoDaConta(especie, comSaque, T(2026, 9, 30)).saldo, 20000);
   igual('a soma das contas nao mudou com o saque', carteiraDepois.saldoEmConta, somaAntes);
+}
+
+// ============================================= 5b. transferencia entre contas
+
+console.log('\n5b. Transferencia muda de bolso, e nunca e gasto');
+{
+  const nu = conta({ id: 'nu', apelido: 'Nubank', tipo: 'corrente', saldoInicial: 100000, saldoInicialEm: T(2026, 9, 1) });
+  const cx = conta({ id: 'cx', apelido: 'Caixa', tipo: 'corrente', saldoInicial: 50000, saldoInicialEm: T(2026, 9, 1) });
+  const vale = conta({ id: 'va', apelido: 'Vale', tipo: 'vale', saldoInicial: 0, saldoInicialEm: T(2026, 9, 1) });
+  const cartao = conta({ id: 'cc', apelido: 'Cartao', tipo: 'credito' });
+
+  const semNada = dados({ contas: [nu, cx, vale] });
+  const entreCorrentes = dados({
+    contas: [nu, cx, vale],
+    transferencias: [
+      transferencia({ origemContaId: 'nu', alvo: 'conta', alvoId: 'cx', data: T(2026, 9, 10), valor: 20000 }),
+    ],
+  });
+
+  const antes = calcularCarteira(semNada, T(2026, 9, 30));
+  const depois = calcularCarteira(entreCorrentes, T(2026, 9, 30));
+  igual('a origem cai', saldoDaConta(nu, entreCorrentes, T(2026, 9, 30)).saldo, 80000);
+  igual('o destino sobe', saldoDaConta(cx, entreCorrentes, T(2026, 9, 30)).saldo, 70000);
+  igual('e o saldo em conta NAO muda', depois.saldoEmConta, antes.saldoEmConta);
+
+  // Corrente -> vale: sai do dinheiro livre e entra no que so compra comida.
+  const paraVale = dados({
+    contas: [nu, cx, vale],
+    transferencias: [
+      transferencia({ origemContaId: 'nu', alvo: 'conta', alvoId: 'va', data: T(2026, 9, 10), valor: 30000 }),
+    ],
+  });
+  const comVale = calcularCarteira(paraVale, T(2026, 9, 30));
+  igual('mandar para o vale tira do saldo em conta', comVale.saldoEmConta, antes.saldoEmConta - 30000);
+  igual('e poe no vale a mesma quantia', comVale.saldoEmVales, 30000);
+
+  // O mes nao enxerga transferencia entre contas: nao e gasto nem entrada.
+  const mesSem = resumoDoMes(semNada, '2026-09', T(2026, 9, 30));
+  const mesCom = resumoDoMes(entreCorrentes, '2026-09', T(2026, 9, 30));
+  igual('entradas do mes nao mudam', mesCom.entradas, mesSem.entradas);
+  igual('saidas a vista nao mudam', mesCom.saidasAVista, mesSem.saidasAVista);
+  igual('pagamentos do mes nao mudam', mesCom.pagamentos, mesSem.pagamentos);
+
+  // A regra, caso a caso.
+  igual('corrente para corrente pode', motivoParaNaoTransferir(nu, cx, 100), null);
+  igual('o vale RECEBE', motivoParaNaoTransferir(nu, vale, 100), null);
+  conferir('o vale nao ENVIA', motivoParaNaoTransferir(vale, nu, 100) !== null);
+  conferir('credito nao envia', motivoParaNaoTransferir(cartao, nu, 100) !== null);
+  conferir('credito nao recebe', motivoParaNaoTransferir(nu, cartao, 100) !== null);
+  conferir('mesma conta nos dois lados recusa', motivoParaNaoTransferir(nu, nu, 100) !== null);
+  conferir('valor zero recusa', motivoParaNaoTransferir(nu, cx, 0) !== null);
+  conferir('sem destino escolhido recusa', motivoParaNaoTransferir(nu, undefined, 100) !== null);
 }
 
 // ====================================================== 6. quanto falta

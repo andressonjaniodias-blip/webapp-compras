@@ -19,6 +19,7 @@ import { Metas } from './paginas/Metas';
 import { Rendas } from './paginas/Rendas';
 import { Resumo } from './paginas/Resumo';
 import { Simular } from './paginas/Simular';
+import { Transferencias } from './paginas/Transferencias';
 import { ProvedorApp, useApp } from './estado';
 
 function Conteudo() {
@@ -48,6 +49,7 @@ function Conteudo() {
       <Route path="/contas" element={<Contas />} />
       <Route path="/rendas" element={<Rendas />} />
       <Route path="/dividas" element={<Dividas />} />
+      <Route path="/transferencias" element={<Transferencias />} />
       <Route path="/metas" element={<Metas />} />
       <Route path="/fatura/:contaId/:competencia" element={<Fatura />} />
       <Route path="*" element={<ListaCompras />} />
