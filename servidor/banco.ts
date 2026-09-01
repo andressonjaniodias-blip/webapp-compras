@@ -86,6 +86,59 @@ export function comandosDoEsquema(sql: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * O banco esta atras do codigo — falta tabela ou coluna que o esquema ja tem?
+ *
+ * Sao os dois unicos SQLSTATE que significam isso: `42P01` (undefined_table) e
+ * `42703` (undefined_column). Os dois drivers do projeto expoem `.code` assim, o
+ * Neon e o PGlite, entao a mesma deteccao vale em producao e no teste.
+ *
+ * A lista e curta de proposito. Qualquer outra falha de banco — conexao, sintaxe,
+ * permissao, restricao violada — precisa continuar subindo como erro: mascara-la
+ * com uma tentativa de "consertar o esquema" trocaria um problema visivel por um
+ * silencioso, que e exatamente o oposto do que este arquivo tenta fazer.
+ */
+const CODIGOS_DE_ESQUEMA_ATRASADO = new Set(['42P01', '42703']);
+
+export function ehEsquemaDesatualizado(falha: unknown): boolean {
+  if (typeof falha !== 'object' || falha === null) return false;
+  const codigo = (falha as { code?: unknown }).code;
+  return typeof codigo === 'string' && CODIGOS_DE_ESQUEMA_ATRASADO.has(codigo);
+}
+
+let esquemaAplicado = false;
+
+/**
+ * Aplica `esquema.sql` no banco configurado. Uma vez por processo.
+ *
+ * Existe porque o passo manual de rodar `npm run banco:criar` depois de publicar
+ * FOI esquecido de verdade, e o sintoma foi 500 em toda sincronizacao — o app
+ * seguia funcionando no aparelho e nada subia. Como todo comando do esquema e
+ * idempotente, aplicar sozinho quando o banco esta atrasado nao custa nada e
+ * tira essa classe de falha do caminho.
+ *
+ * A flag impede insistir: se o esquema ja foi aplicado e o erro continua, o
+ * problema e outro e precisa aparecer, nao ser repetido em silencio.
+ *
+ * O caminho do arquivo e relativo a ESTE modulo, entao funciona tanto sob `tsx`
+ * quanto no bundle de `dist-servidor/`, que fica um nivel abaixo da raiz.
+ */
+export async function aplicarEsquema(): Promise<boolean> {
+  if (esquemaAplicado) return false;
+  esquemaAplicado = true;
+
+  const { readFile } = await import('node:fs/promises');
+  const consultar = await banco();
+  const esquema = await readFile(new URL('../esquema.sql', import.meta.url), 'utf8');
+  for (const comando of comandosDoEsquema(esquema)) await consultar(comando);
+  return true;
+}
+
+/** So para o teste conseguir exercitar a autocura mais de uma vez. */
+export function esquecerEsquemaAplicado(): void {
+  esquemaAplicado = false;
+}
+
 /** BIGINT chega como string; timestamps e centavos precisam voltar a ser numero. */
 export function numero(valor: unknown): number {
   return typeof valor === 'number' ? valor : Number(valor);
