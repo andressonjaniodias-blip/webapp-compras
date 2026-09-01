@@ -7,11 +7,19 @@
  * celular e digitar o primeiro item precisa ter o menor numero possivel de
  * toques.
  *
- * PRINCÍPIO 0: para quem nunca cadastrou conta nem entrada, esta tela e
- * exatamente a de antes da v2 — sem linha de previsao, sem icone a mais, sem
- * aviso de "configure alguma coisa". A linha de previsao so nasce quando ha
- * renda cadastrada, e ela existe porque informacao que so aparece quando a
- * pessoa vai procurar nao muda decisao nenhuma.
+ * PRINCÍPIO 0, na redacao corrigida: para quem nunca cadastrou conta nem
+ * entrada, esta tela nao ganha NUMERO nenhum, nem aviso, nem "configure alguma
+ * coisa". A linha de previsao so nasce quando ha renda cadastrada, porque
+ * informacao que so aparece quando a pessoa vai procurar nao muda decisao
+ * nenhuma.
+ *
+ * O que mudou: a PORTA nao e mais escondida. Antes o 💳 dependia de ja existir
+ * conta ou renda — ou seja, o botao que leva a cadastrar a primeira conta so
+ * aparecia depois da primeira conta existir. Num aparelho novo o efeito era
+ * pior: enquanto a primeira sincronizacao nao terminava (e o Render hiberna,
+ * entao ela demora), nao havia NENHUM caminho ate contas e cartoes, e se ela
+ * falhasse nao havia caminho nunca. Hoje a porta so some por escolha explicita
+ * — o modo simples —, jamais por falta de dado ou de rede.
  */
 
 import { useNavigate } from 'react-router-dom';
@@ -45,14 +53,17 @@ export function ListaCompras() {
       <header className="topo">
         <div className="topo-linha">
           <h1>Compras</h1>
-          {financeiro.mostrar && (
+          {!financeiro.modoSimples && (
             <button
               type="button"
               className="botao-icone"
-              aria-label="Carteira"
+              aria-label={financeiro.mostrar ? 'Carteira' : 'Controle financeiro'}
               onClick={() => navegar('/carteira')}
             >
               💳
+              <span className="rotulo-largo">
+                {financeiro.mostrar ? 'Carteira' : 'Controle financeiro'}
+              </span>
             </button>
           )}
           <button
@@ -62,6 +73,7 @@ export function ListaCompras() {
             onClick={() => navegar('/resumo')}
           >
             ▦
+            <span className="rotulo-largo">Resumo</span>
           </button>
           <button
             type="button"
@@ -70,6 +82,7 @@ export function ListaCompras() {
             onClick={() => navegar('/ajustes')}
           >
             ⚙
+            <span className="rotulo-largo">Ajustes</span>
           </button>
         </div>
         <BarraSituacao />

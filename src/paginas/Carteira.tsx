@@ -1,8 +1,11 @@
 /**
  * A Carteira: quanto tem, quanto falta e como ficam os proximos meses.
  *
- * Ela so existe quando ha conta ou renda cadastrada — Princípio 0: quem so quer
- * anotar compras nunca chega aqui, e nao ve nem o icone que leva ate aqui.
+ * Sem conta e sem renda ela nao mostra saldo nenhum: vira a tela de ativacao do
+ * modulo (ver `Ativacao`, no fim do arquivo). O Princípio 0 continua valendo no
+ * que importa — quem so quer anotar compras nunca ve numero financeiro nenhum —,
+ * mas o CAMINHO ate aqui agora existe sempre, porque esconder a porta escondia
+ * junto o unico jeito de cadastrar a primeira conta.
  *
  * A ordem da tela e a ordem das perguntas: quanto tenho hoje, quanto ja devo,
  * como fica daqui para frente. A premissa do gasto estimado fica editavel ao
@@ -29,7 +32,7 @@ const HORIZONTE = 12;
 
 export function Carteira() {
   const navegar = useNavigate();
-  const { plano } = useApp();
+  const { plano, ultimaEm, situacao, sincronizarAgora } = useApp();
   const { dados, gastoManual, carregando, temContas, temRenda, temDividas } = useFinanceiro();
   const [editandoGasto, setEditandoGasto] = useState(false);
 
@@ -38,6 +41,16 @@ export function Carteira() {
       <div className="app">
         <p className="carregando">Carregando…</p>
       </div>
+    );
+  }
+
+  if (!temContas && !temRenda) {
+    return (
+      <Ativacao
+        nuncaSincronizou={ultimaEm === null}
+        sincronizando={situacao === 'sincronizando'}
+        onSincronizar={() => void sincronizarAgora(true)}
+      />
     );
   }
 
@@ -261,6 +274,93 @@ export function Carteira() {
             Metas{dados.metas.length > 0 ? ` (${dados.metas.length})` : ''}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A porta de entrada do controle financeiro, quando ainda nao ha nada dentro.
+ *
+ * Existe porque a versao anterior escondia o modulo inteiro ate a primeira conta
+ * existir — inclusive o caminho para criar essa primeira conta.
+ *
+ * Os dois estados sao separados de proposito. Num aparelho novo, "nao ha conta"
+ * e "a conta ainda nao chegou da nuvem" parecem identicos daqui, e convidar a
+ * cadastrar produziria um segundo "Nubank" que a sincronizacao duplicaria nos
+ * dois aparelhos com toda a fidelidade. O aviso aparece, mas nao tranca nada:
+ * quem esta comecando de verdade tambem nunca sincronizou, e travar os botoes
+ * recriaria o beco sem saida que esta tela veio desfazer.
+ */
+function Ativacao({
+  nuncaSincronizou,
+  sincronizando,
+  onSincronizar,
+}: {
+  nuncaSincronizou: boolean;
+  sincronizando: boolean;
+  onSincronizar: () => void;
+}) {
+  const navegar = useNavigate();
+
+  return (
+    <div className="app">
+      <header className="topo">
+        <div className="topo-linha">
+          <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/')}>
+            ‹
+          </button>
+          <h1>Controle financeiro</h1>
+        </div>
+      </header>
+
+      <div className="cartao">
+        <p style={{ marginTop: 0 }}>
+          Contas, cartões, faturas e a previsão dos próximos meses — para o app responder
+          <strong> “posso comprar isto?”</strong> antes da compra.
+        </p>
+        <p className="dica">
+          Ligar isto não muda em nada o registro de compras: ele continua exatamente como é.
+        </p>
+      </div>
+
+      {nuncaSincronizou && (
+        <div className="cartao">
+          <p className="aviso aviso-atencao" style={{ margin: 0 }}>
+            Este aparelho ainda não recebeu os dados da nuvem. Se você já cadastrou contas em
+            outro aparelho, <strong>sincronize antes de cadastrar</strong> — senão a mesma conta
+            passa a existir duas vezes.
+          </p>
+          <div className="acoes">
+            <button
+              type="button"
+              className="botao botao-primario botao-largo"
+              disabled={sincronizando}
+              onClick={onSincronizar}
+            >
+              {sincronizando ? 'Sincronizando…' : 'Sincronizar agora'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="cartao">
+        <div className="acoes" style={{ marginTop: 0 }}>
+          <button
+            type="button"
+            className="botao botao-primario botao-largo"
+            onClick={() => navegar('/contas')}
+          >
+            Cadastrar conta ou cartão
+          </button>
+          <button type="button" className="botao botao-largo" onClick={() => navegar('/rendas')}>
+            Cadastrar uma entrada
+          </button>
+        </div>
+        <p className="dica">
+          Comece pela conta de onde o dinheiro sai. A entrada é o que faz o app projetar os
+          próximos meses.
+        </p>
       </div>
     </div>
   );

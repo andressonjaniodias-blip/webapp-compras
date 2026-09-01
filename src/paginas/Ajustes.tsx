@@ -11,9 +11,16 @@
  *   restauracao. Ele fica no plano GRATIS por principio: segurar o dado de
  *   alguem como refem do plano e uma linha que este projeto nao cruza.
  *
- * O "modo simples" e a saida do Princípio 0: esconde tudo que e financeiro sem
- * apagar nada. E preferencia de aparelho, entao o celular pode ser um caderninho
- * enquanto o PC mostra a previsao inteira.
+ * A primeira secao e a escolha entre "so compras" e "compras + controle
+ * financeiro". Ela aparece SEMPRE, com ou sem dado cadastrado, e e escrita como
+ * duas opcoes nomeadas em vez do antigo interruptor "modo simples" — que era
+ * invertido (ligar para desligar), so nascia depois da primeira conta existir, e
+ * por isso nao era achado por quem procurava justamente como ligar o modulo.
+ *
+ * A gravacao continua sendo `modoSimples` na tabela `config`: o sinal e
+ * invertido so aqui na borda. Sendo preferencia de aparelho, ela nao sincroniza —
+ * o celular pode ser um caderninho enquanto o PC mostra a previsao inteira —, e
+ * e por isso que a frase "vale so neste aparelho" precisa estar na tela.
  */
 
 import { useRef, useState } from 'react';
@@ -36,7 +43,6 @@ import {
   lerModoSimples,
   listarRegras,
 } from '../dados/financas';
-import { useFinanceiro } from '../dados/financeiro';
 import {
   propostasDeRevisao,
   resumirHistorico,
@@ -55,7 +61,6 @@ export function Ajustes() {
     pendentes, ultimaEm, situacao, offline, iaLigada, plano,
     sincronizarAgora, encerrarSessao, atualizarPendentes,
   } = useApp();
-  const financeiro = useFinanceiro();
 
   const [recado, setRecado] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -104,48 +109,46 @@ export function Ajustes() {
       {recado && <p className="aviso">{recado}</p>}
       {erro && <p className="aviso aviso-erro">{erro}</p>}
 
-      <h2 className="secao-titulo">Controle financeiro</h2>
+      <h2 className="secao-titulo">Como o app funciona neste aparelho</h2>
       <div className="cartao">
-        {!financeiro.temContas && !financeiro.temRenda ? (
-          <>
-            <p style={{ marginTop: 0 }}>
-              Contas, entradas e previsão dos próximos meses — para o app responder
-              <strong> “posso comprar isto?”</strong> antes da compra.
-            </p>
-            <p className="dica">
-              Nada disto é obrigatório. Enquanto você não cadastrar nada, o app continua sendo
-              exatamente o caderno de compras que já era.
-            </p>
-            <div className="acoes" style={{ marginTop: 0 }}>
-              <button
-                type="button"
-                className="botao botao-primario botao-largo"
-                onClick={() => navegar('/contas')}
-              >
-                Começar cadastrando uma conta
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="acoes" style={{ marginTop: 0 }}>
-              <button type="button" className="botao botao-largo" onClick={() => navegar('/carteira')}>
-                Abrir a Carteira
-              </button>
-            </div>
-            <label className="interruptor">
-              <input
-                type="checkbox"
-                checked={simples}
-                onChange={(e) => void gravarModoSimples(e.target.checked)}
-              />
-              <span>Modo simples</span>
-            </label>
-            <p className="dica">
-              Esconde tudo que é financeiro neste aparelho. <strong>Não apaga nada</strong> — e
-              vale só aqui, então o celular pode ficar simples enquanto o PC mostra tudo.
-            </p>
-          </>
+        <label className="interruptor">
+          <input
+            type="radio"
+            name="modo-do-app"
+            checked={simples}
+            onChange={() => void gravarModoSimples(true)}
+          />
+          <span>Só compras</span>
+        </label>
+        <p className="dica">
+          O caderno de anotações. Contas, cartões, faturas e previsão ficam escondidos.
+        </p>
+
+        <label className="interruptor" style={{ marginTop: 12 }}>
+          <input
+            type="radio"
+            name="modo-do-app"
+            checked={!simples}
+            onChange={() => void gravarModoSimples(false)}
+          />
+          <span>Compras + controle financeiro</span>
+        </label>
+        <p className="dica">
+          Contas, cartões, faturas, previsão e metas — para o app responder
+          <strong> “posso comprar isto?”</strong> antes da compra.
+        </p>
+
+        <p className="dica">
+          A escolha vale <strong>só neste aparelho</strong> e <strong>não apaga nada</strong>: o
+          celular pode ficar simples enquanto o PC mostra tudo.
+        </p>
+
+        {!simples && (
+          <div className="acoes">
+            <button type="button" className="botao botao-largo" onClick={() => navegar('/carteira')}>
+              Abrir o controle financeiro
+            </button>
+          </div>
         )}
       </div>
 
