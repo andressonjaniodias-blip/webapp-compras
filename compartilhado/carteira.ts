@@ -29,6 +29,7 @@ import {
   diaDoMesSeguro,
   fechamentoDe,
   intervaloDoMes,
+  meiaNoiteDe,
   partesDaChave,
   somarMeses,
   vencimentoDe,
@@ -82,6 +83,18 @@ export const SEM_DADOS: DadosFinanceiros = {
  *
  * O dia e travado no do lançamento original: salario no dia 31 cai no dia 28 em
  * fevereiro, e nao escorrega para março.
+ *
+ * O PISO E O DIA, NAO O INSTANTE, e isto corrige um bug que apagava a primeira
+ * ocorrencia de TODA renda recorrente recem-criada. A ocorrencia e montada com
+ * segundos zerados; `criarRenda` grava `Date.now()`, que tem segundos. Entao a
+ * ocorrencia do proprio mes caia uns segundos ANTES de `renda.data` e era
+ * descartada — um salario cadastrado hoje sO passava a contar no mes seguinte.
+ * A suite nunca viu porque a fabrica de teste monta datas com segundos zerados.
+ *
+ * O TETO continua sendo o instante, de proposito: a previsao do mes corrente
+ * conta o que ainda vai cair e o saldo conta o que ja caiu, e as duas usam
+ * `agora` como divisor. Arredondar o teto para o dia faria a mesma parcela ser
+ * contada nos dois lados.
  */
 export function ocorrenciasDeRenda(renda: Renda, ate: number): number[] {
   if (renda.data > ate) return [];
@@ -90,6 +103,7 @@ export function ocorrenciasDeRenda(renda: Renda, ate: number): number[] {
   if (renda.periodicidade === 'unica') return [renda.data];
 
   const passo = renda.periodicidade === 'anual' ? 12 : 1;
+  const piso = meiaNoiteDe(renda.data);
   const inicio = new Date(renda.data);
   const dia = inicio.getDate();
   const hora = inicio.getHours();
@@ -104,7 +118,7 @@ export function ocorrenciasDeRenda(renda: Renda, ate: number): number[] {
     const mes = alvo.getMonth();
     const ms = new Date(ano, mes, diaDoMesSeguro(ano, mes, dia), hora, minuto, 0, 0).getTime();
     if (ms > fim) break;
-    if (ms >= renda.data) saida.push(ms);
+    if (ms >= piso) saida.push(ms);
   }
   return saida;
 }
@@ -155,28 +169,36 @@ export interface SaldoConta {
  * Saldo de uma conta que guarda dinheiro (corrente, vale, espécie).
  *
  * Cartao de credito nao entra aqui: ele nao tem saldo, tem fatura.
+ *
+ * O CORTE E POR DIA, INCLUSIVE, e isto e a correcao de um bug real: o saldo de
+ * partida vale a partir de uma DATA, entao tudo lançado nesse dia ou depois
+ * conta. Antes o corte era o instante exato de `saldoInicialEm`, e as tres
+ * perguntas abaixo tinham tres respostas diferentes — renda usava `>=`, compra e
+ * transferencia usavam `>`. Duas entradas cadastradas as 14h55 sumiam de um
+ * saldo informado as 15h, sem aviso nenhum. Diferenca de minutos nao pode
+ * decidir se dinheiro existe.
  */
 export function saldoDaConta(
   conta: Conta,
   dados: DadosFinanceiros,
   agora: number,
 ): SaldoConta {
-  const desde = conta.saldoInicialEm;
+  const desde = meiaNoiteDe(conta.saldoInicialEm);
 
   const entradasRenda = entradasEntre(dados.rendas, desde, agora, conta.id);
   const recebidas = dados.transferencias
     .filter(
       (t) =>
-        naoExcluido(t) && t.alvo === 'conta' && t.alvoId === conta.id && t.data > desde && t.data <= agora,
+        naoExcluido(t) && t.alvo === 'conta' && t.alvoId === conta.id && t.data >= desde && t.data <= agora,
     )
     .reduce((soma, t) => soma + t.valor, 0);
 
   const gastos = dados.compras
-    .filter((c) => naoExcluido(c) && c.contaId === conta.id && c.data > desde && c.data <= agora)
+    .filter((c) => naoExcluido(c) && c.contaId === conta.id && c.data >= desde && c.data <= agora)
     .reduce((soma, c) => soma + c.total, 0);
 
   const enviadas = dados.transferencias
-    .filter((t) => naoExcluido(t) && t.origemContaId === conta.id && t.data > desde && t.data <= agora)
+    .filter((t) => naoExcluido(t) && t.origemContaId === conta.id && t.data >= desde && t.data <= agora)
     .reduce((soma, t) => soma + t.valor, 0);
 
   const entradas = entradasRenda + recebidas;
@@ -341,6 +363,8 @@ export interface Carteira {
   terminaEm: string | null;
   /** Compras sem conta definida — ficam fora do saldo, e a tela avisa. */
   semConta: { quantidade: number; total: number };
+  /** Entradas sem conta definida — mesmo problema, mesmo aviso. */
+  rendasSemConta: { quantidade: number; total: number };
 }
 
 export function calcularCarteira(dados: DadosFinanceiros, agora: number): Carteira {
@@ -357,6 +381,7 @@ export function calcularCarteira(dados: DadosFinanceiros, agora: number): Cartei
 
   const aPagar = totalComprometido(lista);
   const semConta = comprasSemConta(dados);
+  const rendasSemConta = entradasSemConta(dados, agora);
 
   return {
     contas,
@@ -367,6 +392,7 @@ export function calcularCarteira(dados: DadosFinanceiros, agora: number): Cartei
     sobraProjetada: saldoEmConta - aPagar,
     terminaEm: terminaEm(lista),
     semConta,
+    rendasSemConta,
   };
 }
 
@@ -384,6 +410,34 @@ export function comprasSemConta(dados: DadosFinanceiros): { quantidade: number; 
   return {
     quantidade: soltas.length,
     total: soltas.reduce((soma, compra) => soma + compra.total, 0),
+  };
+}
+
+/**
+ * Entradas que nao apontam para conta nenhuma.
+ *
+ * O contraponto de `comprasSemConta`, e existe pelo mesmo motivo: elas ficam
+ * fora de todo saldo, porque `saldoDaConta` casa renda com conta por id e
+ * `null` nao casa com nenhuma. A diferenca e que aqui o silencio era pior — a
+ * tela de entradas chamava a opcao vazia de "Conta corrente (o padrão)", ou
+ * seja, prometia uma conta que o codigo nunca entregava.
+ *
+ * Soma so o que ja caiu ate `agora`: uma recorrente cadastrada hoje ainda vai
+ * cair muitas vezes, e avisar sobre o futuro dela seria alarme sem tamanho.
+ */
+export function entradasSemConta(
+  dados: DadosFinanceiros,
+  agora: number,
+): { quantidade: number; total: number } {
+  const soltas = dados.rendas.filter(
+    (renda) => naoExcluido(renda) && !acharConta(dados.contas, renda.contaId),
+  );
+  return {
+    quantidade: soltas.length,
+    total: soltas.reduce(
+      (soma, renda) => soma + renda.valor * ocorrenciasDeRenda(renda, agora).length,
+      0,
+    ),
   };
 }
 

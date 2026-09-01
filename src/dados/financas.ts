@@ -64,7 +64,11 @@ export async function criarConta(parcial: Partial<Conta> = {}): Promise<string> 
     diaVencimento: parcial.diaVencimento ?? 10,
     limite: parcial.limite ?? 0,
     saldoInicial: parcial.saldoInicial ?? 0,
-    saldoInicialEm: parcial.saldoInicialEm ?? Date.now(),
+    // O primeiro dia do mes corrente, e nao `Date.now()`: o saldo de partida
+    // marca DE QUANDO ele vale, e comecar "agora" jogava para fora do saldo o
+    // salario que ja caiu neste mes — inclusive entradas cadastradas minutos
+    // antes. Ver `reinformarSaldo`.
+    saldoInicialEm: parcial.saldoInicialEm ?? intervaloDoMes(chaveDoMes(Date.now())).inicio,
     ordem: parcial.ordem ?? proximaOrdem,
     ...novo,
     ...carimbo(),
@@ -88,8 +92,13 @@ export async function atualizarConta(
  * autocorrigir, porque tudo anterior a ela passa a ser ignorado. Gravar so o
  * valor deixaria o saldo somando de novo movimentos que ja estavam embutidos
  * nele — e o numero ficaria errado sem nenhum sinal.
+ *
+ * `quando` NAO tem valor padrao, e a falta dele e proposital. Enquanto ele caia
+ * em `Date.now()` sozinho, digitar o saldo empurrava o corte para o instante do
+ * toque e engolia em silencio tudo que tinha sido cadastrado minutos antes.
+ * Obrigar quem chama a dizer a data torna esse acidente impossivel de repetir.
  */
-export async function reinformarSaldo(id: string, saldo: number, quando = Date.now()): Promise<void> {
+export async function reinformarSaldo(id: string, saldo: number, quando: number): Promise<void> {
   await atualizarConta(id, { saldoInicial: saldo, saldoInicialEm: quando });
 }
 

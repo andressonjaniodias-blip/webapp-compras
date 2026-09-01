@@ -67,7 +67,19 @@ Rode as três antes de dar qualquer mudança por concluída.
 12. **Renda recorrente é versionada, nunca editada retroativamente.** Aumento
     encerra a antiga e cria a nova; editar o valor no lugar reescreveria todos
     os meses anteriores em silêncio.
-13. **`compartilhado/planos.ts` é a única fonte dos limites de plano.** Nada de
+13. **O saldo de partida é uma DATA, e o corte é por dia.** `saldoInicialEm`
+    diz de quando o saldo informado vale; ele só muda quando o usuário muda, e
+    `saldoDaConta` compara pela meia-noite daquele dia, com `>=` para renda,
+    compra e transferência. Hora nunca decide se dinheiro existe. Enquanto o
+    corte era o instante do toque, digitar o saldo engolia em silêncio o que
+    tinha sido cadastrado minutos antes.
+14. **Em `ocorrenciasDeRenda`, o piso é o dia e o teto é o instante.** O piso é
+    por dia porque a ocorrência nasce com segundos zerados e `criarRenda` grava
+    `Date.now()`: comparar instantes apagava a primeira ocorrência de toda renda
+    recorrente recém-criada. O teto continua sendo o instante porque a previsão
+    do mês corrente conta o que ainda vai cair e o saldo conta o que já caiu —
+    arredondar o teto faria a mesma parcela ser contada nos dois lados.
+15. **`compartilhado/planos.ts` é a única fonte dos limites de plano.** Nada de
     `if (plano === 'pago')` espalhado. E só a IA é barrada no servidor: o resto
     é porteira de tela, assumido por escrito.
 

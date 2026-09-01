@@ -476,6 +476,79 @@ console.log('\n8. Saldo inicial e compra sem conta');
   igual('e acharConta devolve undefined', acharConta(solta.contas, null), undefined);
 }
 
+// ============================================ 8b. entradas no saldo da conta
+
+/*
+ * A lacuna que deixou um bug real passar: ate aqui NENHUM teste verificava que
+ * uma entrada aumenta o saldo de uma conta. O proprio helper `renda()` cria com
+ * `contaId: null`, entao a suite exercitava so o caminho em que a entrada nao
+ * entra em saldo nenhum — e passava.
+ */
+console.log('\n8b. Entradas somam no saldo, e a hora nao decide');
+{
+  const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 9, 1) });
+
+  const salario = renda({ data: T(2026, 9, 5), valor: 300000, periodicidade: 'mensal', contaId: 'cc' });
+  const extra = renda({ data: T(2026, 9, 12), valor: 50000, periodicidade: 'unica', contaId: 'cc' });
+  const base = dados({ contas: [cc], rendas: [salario, extra] });
+
+  igual('salario e extra somam no saldo da conta', saldoDaConta(cc, base, T(2026, 9, 30)).saldo, 350000);
+  igual('e o resumo do mes mostra o MESMO total', resumoDoMes(base, '2026-09', T(2026, 9, 30)).entradas, 350000);
+
+  // O CASO RELATADO: entradas cadastradas as 14h, saldo informado as 15h do
+  // MESMO dia. Com o corte por instante, as duas sumiam do saldo sem aviso.
+  const mesmoDia = dados({
+    contas: [{ ...cc, saldoInicialEm: T(2026, 9, 20, 15) }],
+    rendas: [
+      renda({ data: T(2026, 9, 20, 14), valor: 300000, periodicidade: 'unica', contaId: 'cc' }),
+      renda({ data: T(2026, 9, 20, 14), valor: 50000, periodicidade: 'unica', contaId: 'cc' }),
+    ],
+  });
+  igual(
+    'entrada do mesmo dia conta, mesmo lançada antes da hora do saldo',
+    saldoDaConta(mesmoDia.contas[0]!, mesmoDia, T(2026, 9, 30)).saldo,
+    350000,
+  );
+
+  // Mas o corte continua existindo: um DIA antes nao conta, senao o valor
+  // informado somaria de novo o que ja estava dentro dele.
+  const diaAnterior = dados({
+    contas: [{ ...cc, saldoInicialEm: T(2026, 9, 20, 15) }],
+    rendas: [renda({ data: T(2026, 9, 19, 23), valor: 300000, periodicidade: 'unica', contaId: 'cc' })],
+  });
+  igual(
+    'entrada do dia anterior ao corte nao conta',
+    saldoDaConta(diaAnterior.contas[0]!, diaAnterior, T(2026, 9, 30)).saldo,
+    0,
+  );
+
+  /*
+   * A regressao mais cara desta rodada, e a que a propria fabrica de teste
+   * escondia: `T()` monta datas com segundos zerados, mas `criarRenda` grava
+   * `Date.now()`, que tem segundos. A ocorrencia e montada com segundos em zero,
+   * entao ela caia uns segundos ANTES de `renda.data` e era descartada — toda
+   * renda recorrente recem-cadastrada contava zero no proprio mes.
+   */
+  const comSegundos = T(2026, 9, 5) + 37_000;
+  igual(
+    'renda recorrente criada com segundos conta no proprio mes',
+    ocorrenciasDeRenda(
+      renda({ data: comSegundos, valor: 300000, periodicidade: 'mensal' }),
+      T(2026, 9, 30),
+    ).length,
+    1,
+  );
+
+  const solta = dados({
+    contas: [cc],
+    rendas: [renda({ data: T(2026, 9, 10), valor: 80000, periodicidade: 'unica', contaId: null })],
+  });
+  const carteira = calcularCarteira(solta, T(2026, 9, 30));
+  igual('entrada sem conta nao mexe no saldo', carteira.saldoEmConta, 0);
+  igual('mas aparece no aviso', carteira.rendasSemConta.quantidade, 1);
+  igual('com o valor somado', carteira.rendasSemConta.total, 80000);
+}
+
 // ================================================== 9. grupos e estimativa
 
 console.log('\n9. Os grupos de categoria, e a distorcao da geladeira');

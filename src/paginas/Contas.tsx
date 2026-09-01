@@ -26,7 +26,7 @@ import {
 } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
-import { formatarData } from '../lib/datas';
+import { deInputData, formatarData, paraInputData } from '../lib/datas';
 import { useApp } from '../estado';
 
 export function Contas() {
@@ -128,6 +128,12 @@ function FormConta({
   onExcluir: () => Promise<void>;
 }) {
   const [saldoNovo, setSaldoNovo] = useState<number | null>(null);
+  const [dataNova, setDataNova] = useState<number | null>(null);
+
+  const saldoEmEdicao = saldoNovo ?? conta.saldoInicial;
+  const dataEmEdicao = dataNova ?? conta.saldoInicialEm;
+  const mudouOSaldo =
+    saldoEmEdicao !== conta.saldoInicial || dataEmEdicao !== conta.saldoInicialEm;
 
   async function mudar(mudancas: Partial<Omit<Conta, 'id'>>) {
     await atualizarConta(conta.id, mudancas);
@@ -215,27 +221,44 @@ function FormConta({
       {temSaldo(conta) && (
         <div className="campo">
           <label className="campo-rotulo" htmlFor={'saldo-' + conta.id}>
-            Quanto tem nesta conta hoje
+            Saldo de partida
           </label>
           <CampoDinheiro
             id={'saldo-' + conta.id}
-            valor={saldoNovo ?? conta.saldoInicial}
+            valor={saldoEmEdicao}
             onChange={setSaldoNovo}
           />
+
+          <label className="campo-rotulo" htmlFor={'saldo-em-' + conta.id} style={{ marginTop: 10 }}>
+            Válido a partir de
+          </label>
+          <input
+            id={'saldo-em-' + conta.id}
+            className="entrada"
+            type="date"
+            value={paraInputData(dataEmEdicao)}
+            onChange={(e) => {
+              const data = deInputData(e.target.value);
+              if (data !== null) setDataNova(data);
+            }}
+          />
           <p className="dica">
-            Informado em {formatarData(conta.saldoInicialEm)}. Só o que aconteceu depois dessa
-            data conta no saldo — então informar de novo agora corrige qualquer desvio.
+            Tudo que você registrar <strong>a partir dessa data</strong> soma neste saldo. O que
+            é anterior não soma — o valor informado já contém. Mexer no valor não muda a data:
+            quem escolhe é você.
           </p>
-          {saldoNovo !== null && saldoNovo !== conta.saldoInicial && (
+
+          {mudouOSaldo && (
             <button
               type="button"
               className="botao botao-largo"
               onClick={async () => {
-                await reinformarSaldo(conta.id, saldoNovo);
+                await reinformarSaldo(conta.id, saldoEmEdicao, dataEmEdicao);
                 setSaldoNovo(null);
+                setDataNova(null);
               }}
             >
-              Usar {formatarReais(saldoNovo)} como saldo de hoje
+              Usar {formatarReais(saldoEmEdicao)} desde {formatarData(dataEmEdicao)}
             </button>
           )}
         </div>

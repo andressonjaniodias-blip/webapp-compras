@@ -109,6 +109,16 @@ export function Carteira() {
             onde saíram.
           </p>
         )}
+        {carteira.rendasSemConta.quantidade > 0 && (
+          <p className="aviso aviso-atencao" style={{ marginTop: 10 }}>
+            {carteira.rendasSemConta.quantidade} entrada(s) sem conta definida, somando{' '}
+            {formatarReais(carteira.rendasSemConta.total)}. Elas ficam fora do saldo até você
+            dizer onde caíram.{' '}
+            <button type="button" className="link" onClick={() => navegar('/rendas')}>
+              Corrigir
+            </button>
+          </p>
+        )}
       </section>
 
       <button

@@ -17,7 +17,11 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { SeletorChips } from '../componentes/SeletorChips';
-import { ORIGENS_RENDA, PERIODICIDADES } from '../../compartilhado/constantes';
+import {
+  ORIGENS_RENDA,
+  PERIODICIDADE_ANUAL,
+  PERIODICIDADES,
+} from '../../compartilhado/constantes';
 import { ocorrenciasDeRenda } from '../../compartilhado/carteira';
 import type { Periodicidade, Renda } from '../../compartilhado/tipos';
 import {
@@ -250,7 +254,7 @@ function FormRenda({
       )}
 
       <div className="campo">
-        <label className="campo-rotulo" htmlFor={'per-' + renda.id}>Com que frequência</label>
+        <label className="campo-rotulo" htmlFor={'per-' + renda.id}>Tipo de entrada</label>
         <select
           id={'per-' + renda.id}
           className="entrada"
@@ -260,13 +264,16 @@ function FormRenda({
           {PERIODICIDADES.map((p) => (
             <option key={p.valor} value={p.valor}>{p.rotulo}</option>
           ))}
+          {/* Só para não trocar em silêncio um cadastro anual que já existe, vindo
+              de backup antigo ou de outro aparelho. Ver PERIODICIDADES. */}
+          {renda.periodicidade === 'anual' && (
+            <option value={PERIODICIDADE_ANUAL.valor}>{PERIODICIDADE_ANUAL.rotulo}</option>
+          )}
         </select>
-        {renda.periodicidade === 'anual' && (
-          <p className="dica">
-            É assim que 13º e férias entram na previsão. Sem eles, uma projeção de doze meses
-            no Brasil está errada por construção.
-          </p>
-        )}
+        <p className="dica">
+          Recorrente é o que cai todo mês sozinho, como o salário. Variável é o que caiu uma
+          vez — um extra, um reembolso, ou o 13º e as férias na parcela em que chegarem.
+        </p>
       </div>
 
       <div className="campo">
@@ -293,14 +300,15 @@ function FormRenda({
           value={renda.contaId ?? ''}
           onChange={(e) => void mudar({ contaId: e.target.value || null })}
         >
-          <option value="">Conta corrente (o padrão)</option>
+          <option value="">Não informado</option>
           {contas.map((conta) => (
             <option key={conta.id} value={conta.id}>{conta.apelido}</option>
           ))}
         </select>
         <p className="dica">
-          Recarga de vale alimentação entra aqui apontando para o vale: o dinheiro fica lá, não
-          na conta.
+          Sem conta informada a entrada <strong>não soma em saldo nenhum</strong>, e a Carteira
+          avisa. Recarga de vale alimentação aponta para o vale: o dinheiro fica lá, não na
+          conta.
         </p>
       </div>
 

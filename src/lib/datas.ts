@@ -39,6 +39,30 @@ export function deInputDataHora(texto: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+/** Timestamp -> "2026-08-19", que e o formato do input de data. */
+export function paraInputData(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * "2026-08-19" -> timestamp no PRIMEIRO INSTANTE desse dia, no fuso local.
+ *
+ * `new Date('2026-08-19')` seria interpretado como UTC e voltaria um dia no
+ * Brasil. Montar a data por partes evita isso.
+ */
+export function deInputData(texto: string): number | null {
+  const partes = /^(d{4})-(d{2})-(d{2})$/.exec(texto);
+  if (!partes) return null;
+  const ms = new Date(
+    Number(partes[1]),
+    Number(partes[2]) - 1,
+    Number(partes[3]),
+  ).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 /** Chave de agrupamento por mes: "2026-08". Ordena alfabeticamente e cronologicamente. */
 export function chaveMes(ms: number): string {
   const d = new Date(ms);

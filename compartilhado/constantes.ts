@@ -106,11 +106,24 @@ export const TIPOS_DIVIDA = [
   { valor: 'financiamento', rotulo: 'Financiamento' },
 ] as const;
 
+/**
+ * As duas formas de uma entrada, na tela.
+ *
+ * `anual` continua existindo no tipo `Periodicidade` e em `ocorrenciasDeRenda`,
+ * mas saiu daqui: 13o e ferias, quando vem divididos na folha, nao sao uma
+ * ocorrencia anual — sao entradas variaveis na data em que caem. Manter a opcao
+ * so oferecia um modelo que descreve mal o caso comum.
+ *
+ * O tipo permanece porque um backup antigo ou outro aparelho ainda pode mandar
+ * `anual`, e a tela precisa saber desenhar isso sem trocar o cadastro sozinha.
+ */
 export const PERIODICIDADES = [
-  { valor: 'unica', rotulo: 'Uma vez' },
-  { valor: 'mensal', rotulo: 'Todo mês' },
-  { valor: 'anual', rotulo: 'Uma vez por ano' },
+  { valor: 'mensal', rotulo: 'Recorrente — todo mês' },
+  { valor: 'unica', rotulo: 'Variável — uma vez' },
 ] as const;
+
+/** Só para desenhar um registro anual que ja existe; nao e oferecida. */
+export const PERIODICIDADE_ANUAL = { valor: 'anual', rotulo: 'Uma vez por ano' } as const;
 
 /**
  * Quais formas de pagamento combinam com qual tipo de conta.

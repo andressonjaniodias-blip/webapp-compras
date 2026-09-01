@@ -27,6 +27,22 @@ import type { Conta } from './tipos';
 
 const DIA_EM_MS = 86_400_000;
 
+/**
+ * A meia-noite do dia em que `ms` cai.
+ *
+ * Existe porque hora e minuto nao podem decidir se um lançamento entra na conta.
+ * O saldo de partida e uma DATA — "meu saldo era este, neste dia" —, e comparar
+ * o instante exato fazia uma entrada cadastrada as 14h55 sumir de um saldo
+ * informado as 15h. Bug que se manifesta em minutos e impossivel de enxergar.
+ *
+ * Nome distinto do `inicioDoDia(ano, mes, dia)` privado la embaixo de proposito:
+ * sao perguntas diferentes, e confundi-las custaria caro.
+ */
+export function meiaNoiteDe(ms: number): number {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
 /** Quantos dias tem o mes. `mes` e 0-based, como no `Date`. */
 export function diasNoMes(ano: number, mes: number): number {
   return new Date(ano, mes + 1, 0).getDate();
