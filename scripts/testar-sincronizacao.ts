@@ -15,7 +15,12 @@ process.env.PGLITE_DIR = 'memory://';
 delete process.env.DATABASE_URL;
 
 import { readFile } from 'node:fs/promises';
-import { banco, comandosDoEsquema } from '../servidor/banco';
+import {
+  banco,
+  comandosDoEsquema,
+  ehEsquemaDesatualizado,
+  esquecerEsquemaAplicado,
+} from '../servidor/banco';
 import { sincronizar } from '../servidor/sincronizacao';
 import type {
   Compra,
@@ -353,6 +358,8 @@ async function principal(): Promise<void> {
     'cursor=' + zerado.cursor,
   );
 
+  await testarAutocuraDoEsquema(consultar);
+
   console.log('');
   if (falhas > 0) {
     console.log(falhas + ' verificacao(oes) falharam.');
@@ -360,6 +367,104 @@ async function principal(): Promise<void> {
   }
   console.log('Sincronizacao: todas as verificacoes passaram.');
   process.exit(0);
+}
+
+/**
+ * O caso que aconteceu de verdade em producao, em 31/08/2026.
+ *
+ * Publicar a v2 sem rodar `npm run banco:criar` deixou o Neon com apenas
+ * `compras` e `itens`, e sem as colunas novas. Resultado: TODA sincronizacao
+ * respondia 500 — o app continuava funcionando no aparelho e nada subia para a
+ * nuvem, que e o pior jeito de falhar neste projeto.
+ *
+ * Aqui o banco antigo e reconstruido do zero para provar que a autocura pega o
+ * caso: sem tabela nova, sem coluna nova, e com uma compra ja gravada que nao
+ * pode se perder no caminho.
+ */
+async function testarAutocuraDoEsquema(consultar: Awaited<ReturnType<typeof banco>>): Promise<void> {
+  console.log('\n14. O banco atrasado se cura sozinho (o incidente de producao)');
+
+  const tabelasNovas = ['contas', 'rendas', 'dividas', 'metas', 'transferencias', 'regras'];
+  for (const tabela of tabelasNovas) await consultar('DROP TABLE IF EXISTS ' + tabela);
+  await consultar('DROP TABLE IF EXISTS compras');
+  await consultar('DROP TABLE IF EXISTS itens');
+
+  // Exatamente o esquema da v1: sem conta_id, sem parcelas, sem tabela nova.
+  await consultar(`CREATE TABLE compras (
+    id TEXT PRIMARY KEY, data BIGINT NOT NULL, descricao TEXT NOT NULL DEFAULT '',
+    categoria TEXT NOT NULL DEFAULT '', forma_pagamento TEXT NOT NULL DEFAULT '',
+    observacao TEXT NOT NULL DEFAULT '', total_manual BIGINT NOT NULL DEFAULT 0,
+    total BIGINT NOT NULL DEFAULT 0, qtd_itens INTEGER NOT NULL DEFAULT 0,
+    atualizado_em BIGINT NOT NULL, excluido_em BIGINT, versao BIGINT NOT NULL)`);
+  await consultar(`CREATE TABLE itens (
+    id TEXT PRIMARY KEY, compra_id TEXT NOT NULL, nome TEXT NOT NULL DEFAULT '',
+    quantidade DOUBLE PRECISION NOT NULL DEFAULT 0, unidade TEXT NOT NULL DEFAULT 'un',
+    preco_unitario BIGINT NOT NULL DEFAULT 0, total BIGINT NOT NULL DEFAULT 0,
+    ordem INTEGER NOT NULL DEFAULT 0, atualizado_em BIGINT NOT NULL,
+    excluido_em BIGINT, versao BIGINT NOT NULL)`);
+
+  await consultar(
+    `INSERT INTO compras (id, data, descricao, categoria, forma_pagamento, observacao,
+       total_manual, total, qtd_itens, atualizado_em, excluido_em, versao)
+     VALUES ('compra-da-v1', $1, 'Mercado de antes', 'Mercado', 'Débito', '', 4500, 4500, 0, $1, NULL, nextval('seq_versao'))`,
+    [Date.UTC(2026, 6, 1, 12, 0)],
+  );
+
+  esquecerEsquemaAplicado();
+
+  let curou = true;
+  let detalhe = '';
+  let resposta;
+  try {
+    resposta = await sincronizar(vazio(0));
+  } catch (falha) {
+    curou = false;
+    detalhe = falha instanceof Error ? falha.message : String(falha);
+  }
+
+  conferir('a sincronizacao nao morre com o banco atrasado', curou, detalhe);
+  if (!resposta) return;
+
+  conferir('as oito listas voltaram', Array.isArray(resposta.contas) && Array.isArray(resposta.regras));
+  conferir('a compra da v1 sobreviveu', resposta.compras.some((c) => c.id === 'compra-da-v1'));
+  conferir(
+    'e ganhou o padrao das colunas novas',
+    resposta.compras.find((c) => c.id === 'compra-da-v1')?.parcelas === 1,
+    String(resposta.compras.find((c) => c.id === 'compra-da-v1')?.parcelas),
+  );
+  conferir(
+    'contaId veio nulo, nao undefined',
+    resposta.compras.find((c) => c.id === 'compra-da-v1')?.contaId === null,
+  );
+
+  const criadas = await consultar<{ table_name: string }>(
+    `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
+  );
+  const nomes = new Set(criadas.map((linha) => linha.table_name));
+  conferir(
+    'as seis tabelas novas passaram a existir',
+    tabelasNovas.every((t) => nomes.has(t)),
+    [...nomes].join(', '),
+  );
+
+  // Gravar nas tabelas recem-criadas tem que funcionar na mesma rodada seguinte.
+  const depois = await sincronizar({
+    cursor: resposta.cursor,
+    compras: [],
+    itens: [],
+    contas: [contaExemplo('conta-pos-cura', Date.now())],
+  });
+  conferir('e ja da para gravar nelas', depois.contas.some((c) => c.id === 'conta-pos-cura'));
+
+  // A outra metade da regra, e a que importa mais: a autocura NAO pode engolir
+  // erro que nao seja esquema atrasado. Trocar um problema visivel por um
+  // silencioso seria pior que o problema original.
+  conferir('reconhece tabela ausente', ehEsquemaDesatualizado({ code: '42P01' }));
+  conferir('reconhece coluna ausente', ehEsquemaDesatualizado({ code: '42703' }));
+  conferir('NAO reage a erro de sintaxe', !ehEsquemaDesatualizado({ code: '42601' }));
+  conferir('NAO reage a violacao de restricao', !ehEsquemaDesatualizado({ code: '23505' }));
+  conferir('NAO reage a falha de conexao', !ehEsquemaDesatualizado(new Error('ECONNREFUSED')));
+  conferir('NAO reage a nulo', !ehEsquemaDesatualizado(null));
 }
 
 principal().catch((falha: unknown) => {
