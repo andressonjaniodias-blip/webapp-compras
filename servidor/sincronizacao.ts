@@ -32,7 +32,13 @@ import type {
   RespostaSincronizacao,
   Transferencia,
 } from '../compartilhado/tipos';
-import { banco, numero, numeroOuNulo } from './banco';
+import {
+  aplicarEsquema,
+  banco,
+  ehEsquemaDesatualizado,
+  numero,
+  numeroOuNulo,
+} from './banco';
 
 /**
  * Teto por rodada. Nao e paginacao de verdade: serve para uma restauracao de
@@ -428,8 +434,41 @@ function semRepetidos<T extends { id: string }>(registros: readonly T[]): T[] {
   return [...mapa.values()];
 }
 
-/** Aplica o que o aparelho enviou e devolve tudo que mudou depois do cursor. */
+/**
+ * Aplica o que o aparelho enviou e devolve tudo que mudou depois do cursor.
+ *
+ * A casca aqui existe por um incidente real: publicar uma versao que acrescenta
+ * tabela sem rodar `npm run banco:criar` deixava TODA sincronizacao respondendo
+ * 500, com o app funcionando no aparelho e nada subindo para a nuvem. O aviso na
+ * documentacao nao bastou — a protecao precisava estar no codigo.
+ *
+ * Custo zero no caminho feliz: nada e consultado a mais enquanto o banco esta em
+ * dia. Isso importa porque o driver HTTP do Neon foi escolhido justamente para
+ * nao manter o banco acordado, e uma verificacao preventiva a cada rodada iria
+ * contra essa decisao.
+ *
+ * Uma tentativa so. Se o esquema ja foi aplicado e o erro persiste, o problema e
+ * outro e tem que aparecer.
+ */
 export async function sincronizar(envio: EnvioSincronizacao): Promise<RespostaSincronizacao> {
+  try {
+    return await rodarSincronizacao(envio);
+  } catch (falha) {
+    if (!ehEsquemaDesatualizado(falha)) throw falha;
+
+    const aplicou = await aplicarEsquema();
+    if (!aplicou) throw falha;
+
+    console.warn(
+      'Banco atras do codigo (' +
+        String((falha as { code?: unknown }).code) +
+        '). Esquema aplicado automaticamente; refazendo a sincronizacao.',
+    );
+    return await rodarSincronizacao(envio);
+  }
+}
+
+async function rodarSincronizacao(envio: EnvioSincronizacao): Promise<RespostaSincronizacao> {
   const consultar = await banco();
   const cursor = Number.isFinite(envio.cursor) ? Math.max(0, envio.cursor) : 0;
 
