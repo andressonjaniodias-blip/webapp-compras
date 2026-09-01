@@ -18,7 +18,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context } from 'hono';
 import type { EnvioSincronizacao } from '../compartilhado/tipos';
 import { limitesDo, planoValido, type Plano } from '../compartilhado/planos';
-import { banco, comandosDoEsquema, ehBancoLocal } from './banco';
+import { banco, comandosDoEsquema, ehBancoLocal, ehEsquemaDesatualizado } from './banco';
 import { analisarMes, IaDesligada, iaLigada, proporRegras } from './dicas';
 import {
   abrirSessao,
@@ -143,6 +143,28 @@ app.post('/api/regras', exigirSessao, async (c) => {
 // trata resposta nao-JSON como sessao expirada e mandaria voce logar de novo
 // por causa de um simples 404.
 app.all('/api/*', (c) => c.json({ erro: 'Rota não encontrada.' }, 404));
+
+/**
+ * Erro nao previsto tambem sai em JSON — a invariante vale inclusive aqui.
+ *
+ * O padrao do Hono e `c.text("Internal Server Error", 500)`, texto puro. Foi
+ * exatamente esse buraco que transformou "o esquema do banco esta atrasado" em
+ * "O servidor respondeu 500." na tela, sem pista nenhuma de onde olhar. A falha
+ * inteira vai para o `console.error`, que e o que aparece no log do Render.
+ */
+app.onError((falha, c) => {
+  console.error('Erro nao tratado em ' + c.req.path + ':', falha);
+
+  if (!c.req.path.startsWith('/api/')) {
+    return c.text('Erro interno no servidor.', 500);
+  }
+
+  const mensagem = ehEsquemaDesatualizado(falha)
+    ? 'O esquema do banco está desatualizado. Rode "npm run banco:criar" apontando para ele.'
+    : 'Erro interno no servidor. Veja o log para o detalhe.';
+
+  return c.json({ erro: mensagem }, 500);
+});
 
 app.use('/*', serveStatic({ root: './dist' }));
 
