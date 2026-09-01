@@ -21,7 +21,7 @@ import {
   ehEsquemaDesatualizado,
   esquecerEsquemaAplicado,
 } from '../servidor/banco';
-import { sincronizar } from '../servidor/sincronizacao';
+import { COLUNAS_SINCRONIZADAS, sincronizar } from '../servidor/sincronizacao';
 import type {
   Compra,
   Conta,
@@ -391,6 +391,28 @@ async function testarAutocuraDoEsquema(consultar: Awaited<ReturnType<typeof banc
   await consultar('DROP TABLE IF EXISTS compras');
   await consultar('DROP TABLE IF EXISTS itens');
 
+  /*
+   * `dividas` volta com a forma ANTIGA, e nao ausente. Sao dois atrasos
+   * diferentes e so um deles estava coberto: tabela que falta inteira o
+   * `CREATE TABLE IF NOT EXISTS` resolve, mas tabela que existe sem a coluna
+   * nova exige `ALTER TABLE ... ADD COLUMN`. Esquecer o ALTER nao quebra banco
+   * novo e quebra todo banco publicado, com 42703 — aconteceu de verdade ao
+   * acrescentar `desconto_em_folha` e `conta_id`.
+   */
+  await consultar(`CREATE TABLE dividas (
+    id TEXT PRIMARY KEY, descricao TEXT NOT NULL DEFAULT '',
+    tipo TEXT NOT NULL DEFAULT 'emprestimo', valor_total BIGINT NOT NULL DEFAULT 0,
+    parcelas INTEGER NOT NULL DEFAULT 1, primeira_em BIGINT NOT NULL,
+    observacao TEXT NOT NULL DEFAULT '', atualizado_em BIGINT NOT NULL,
+    excluido_em BIGINT, versao BIGINT NOT NULL)`);
+
+  await consultar(
+    `INSERT INTO dividas (id, descricao, tipo, valor_total, parcelas, primeira_em,
+       observacao, atualizado_em, excluido_em, versao)
+     VALUES ('divida-antiga', 'Consignado de antes', 'emprestimo', 1200000, 24, $1, '', $1, NULL, nextval('seq_versao'))`,
+    [Date.UTC(2026, 6, 1, 12, 0)],
+  );
+
   // Exatamente o esquema da v1: sem conta_id, sem parcelas, sem tabela nova.
   await consultar(`CREATE TABLE compras (
     id TEXT PRIMARY KEY, data BIGINT NOT NULL, descricao TEXT NOT NULL DEFAULT '',
@@ -447,6 +469,38 @@ async function testarAutocuraDoEsquema(consultar: Awaited<ReturnType<typeof banc
     'as seis tabelas novas passaram a existir',
     tabelasNovas.every((t) => nomes.has(t)),
     [...nomes].join(', '),
+  );
+
+  conferir(
+    'a divida antiga sobreviveu',
+    resposta.dividas.some((d) => d.id === 'divida-antiga'),
+  );
+  conferir(
+    'e ganhou o padrao das colunas novas',
+    resposta.dividas.find((d) => d.id === 'divida-antiga')?.descontoEmFolha === false &&
+      resposta.dividas.find((d) => d.id === 'divida-antiga')?.contaId === null,
+  );
+
+  /*
+   * A checagem que teria pego o bug no dia: TODA coluna que a sincronizacao
+   * escreve tem que existir depois de aplicar o esquema sobre um banco antigo.
+   * Sem ela, cada coluna nova depende de alguem lembrar do ALTER.
+   */
+  const colunas = await consultar<{ table_name: string; column_name: string }>(
+    `SELECT table_name, column_name FROM information_schema.columns
+     WHERE table_schema = 'public'`,
+  );
+  const existentes = new Set(colunas.map((l) => l.table_name + '.' + l.column_name));
+  const faltando: string[] = [];
+  for (const [tabela, nomesDeColuna] of COLUNAS_SINCRONIZADAS) {
+    for (const coluna of nomesDeColuna) {
+      if (!existentes.has(tabela + '.' + coluna)) faltando.push(tabela + '.' + coluna);
+    }
+  }
+  conferir(
+    'toda coluna que a sincronizacao escreve existe no banco',
+    faltando.length === 0,
+    faltando.join(', '),
   );
 
   // Gravar nas tabelas recem-criadas tem que funcionar na mesma rodada seguinte.
