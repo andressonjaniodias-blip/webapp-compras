@@ -91,9 +91,11 @@ Rode as três antes de dar qualquer mudança por concluída.
   tocar nos dados reais, suba com as variáveis vazias — elas vencem o arquivo,
   porque `process.loadEnvFile` não sobrescreve o que já existe no ambiente:
   `DATABASE_URL= SENHA_HASH= SESSAO_SEGREDO= PGLITE_DIR=/tmp/pg npm run dev`.
-- **Depois de publicar, rode `npm run banco:criar` contra o Neon.** As tabelas
-  da v2 não existem lá, e sem elas `/api/sync` responde "relation does not
-  exist". O app segue funcionando no aparelho, mas nada sobe.
+- **Ao acrescentar tabela ou coluna, aplique o esquema no banco publicado** com
+  `npm run banco:criar`. Esquecer isso derrubou toda a sincronização uma vez
+  (31/08/2026), então hoje `/api/sync` **se autocura**: falhou com `42P01` ou
+  `42703`, ela aplica o `esquema.sql` e refaz, uma vez. A rede de segurança
+  não dispensa o passo — só tira dele o poder de derrubar a nuvem.
 - **`esquema.sql` é dividido em comandos por `comandosDoEsquema`**, que tira os
   comentários antes de quebrar no `;`. Um ponto e vírgula dentro de comentário
   partia o arquivo no lugar errado e derrubava a subida do servidor.
