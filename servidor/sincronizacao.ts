@@ -411,6 +411,22 @@ const TABELAS = [
   TABELA_REGRAS,
 ] as const;
 
+/**
+ * As colunas que a sincronizacao escreve, por tabela.
+ *
+ * Exportado para o teste conferir que TODAS existem no banco depois de aplicar
+ * o esquema. Acrescentar coluna no CREATE TABLE sem o ALTER correspondente nao
+ * quebra banco novo e quebra TODO banco que ja existia — e a autocura reaplica
+ * um esquema que nao tem como consertar nada. Ja aconteceu duas vezes; este
+ * mapa existe para a terceira ser pega por teste e nao em producao.
+ */
+export const COLUNAS_SINCRONIZADAS: ReadonlyMap<string, readonly string[]> = new Map(
+  TABELAS.map((tabela) => [
+    tabela.nome,
+    [...tabela.colunas.map(([nome]) => nome), 'versao'],
+  ]),
+);
+
 /** Monta o UPSERT a partir da descricao da tabela. */
 function sqlUpsert(tabela: Tabela<unknown>): string {
   const nomes = tabela.colunas.map(([nome]) => nome);
