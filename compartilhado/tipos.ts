@@ -202,6 +202,22 @@ export type Periodicidade = 'unica' | 'mensal' | 'anual';
 export interface Divida extends Sincronizavel {
   descricao: string;
   tipo: 'emprestimo' | 'financiamento';
+  /**
+   * Desconto automatico em folha (consignado).
+   *
+   * Nunca atrasa: a parcela e considerada paga na data em que o salario cai, e
+   * por isso nao gera lembrete. Como a renda cadastrada e o BRUTO, sem o
+   * desconto do emprestimo, a parcela precisa sair da conta para o saldo bater
+   * com o extrato — e e o `contaId` abaixo que diz de qual.
+   */
+  descontoEmFolha: boolean;
+  /**
+   * De qual conta a parcela sai. `null` = nao informado.
+   *
+   * `Compra`, `Renda` e `Transferencia` sempre disseram de que conta falam; so
+   * `Divida` nao dizia, e sem isso o desconto em folha nao teria de onde sair.
+   */
+  contaId: string | null;
   /** Centavos do total a pagar, com juros ja embutidos. */
   valorTotal: number;
   parcelas: number;

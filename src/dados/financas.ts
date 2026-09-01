@@ -210,6 +210,8 @@ export async function criarDivida(parcial: Partial<Divida> = {}): Promise<string
     valorTotal: parcial.valorTotal ?? 0,
     parcelas: parcial.parcelas ?? 1,
     primeiraEm: parcial.primeiraEm ?? Date.now(),
+    descontoEmFolha: parcial.descontoEmFolha ?? false,
+    contaId: parcial.contaId ?? null,
     observacao: parcial.observacao ?? '',
     ...novo,
     ...carimbo(),

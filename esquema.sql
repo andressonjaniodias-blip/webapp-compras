@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS dividas (
   valor_total   BIGINT  NOT NULL DEFAULT 0,
   parcelas      INTEGER NOT NULL DEFAULT 1,
   primeira_em   BIGINT  NOT NULL,
+  desconto_em_folha BOOLEAN NOT NULL DEFAULT FALSE,
+  conta_id      TEXT,
   observacao    TEXT    NOT NULL DEFAULT '',
   atualizado_em BIGINT  NOT NULL,
   excluido_em   BIGINT,

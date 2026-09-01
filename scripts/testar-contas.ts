@@ -138,6 +138,22 @@ function renda(parcial: Partial<Renda> = {}): Renda {
   };
 }
 
+function divida(parcial: Partial<Divida> = {}): Divida {
+  return {
+    id: parcial.id ?? id('divida'),
+    descricao: parcial.descricao ?? 'Empréstimo',
+    tipo: parcial.tipo ?? 'emprestimo',
+    valorTotal: parcial.valorTotal ?? 1200000,
+    parcelas: parcial.parcelas ?? 24,
+    primeiraEm: parcial.primeiraEm ?? T(2026, 1, 10),
+    descontoEmFolha: parcial.descontoEmFolha ?? false,
+    contaId: parcial.contaId ?? null,
+    observacao: '',
+    atualizadoEm: 0,
+    excluidoEm: null,
+  };
+}
+
 function transferencia(parcial: Partial<Transferencia> = {}): Transferencia {
   return {
     id: parcial.id ?? id('transf'),
@@ -254,6 +270,8 @@ console.log('\n3. Parcela n cai na competencia certa');
     valorTotal: 1200000,
     parcelas: 36,
     primeiraEm: T(2026, 7, 10),
+    descontoEmFolha: false,
+    contaId: null,
     observacao: '',
     atualizadoEm: 0,
     excluidoEm: null,
@@ -450,6 +468,117 @@ console.log('\n6. Quanto falta cai com cada pagamento');
     ]),
   );
   conferir('pagar a mais nao vira credito negativo', excesso.restante === 110000, String(excesso.restante));
+}
+
+// ================================== 6b. divida que começou no passado
+
+/*
+ * Cadastrar hoje um financiamento que ja corre ha um ano nao pode significar
+ * registrar doze pagamentos so para o app parar de dizer "faltam 24 de 24".
+ * Competencia vencida conta como paga por presuncao — e esse dinheiro ja saiu
+ * da conta antes do saldo de partida, entao cobra-lo de novo seria contagem
+ * dupla.
+ */
+console.log('\n6b. Divida que começou no passado');
+{
+  const AGORA = T(2026, 9, 15);
+  const emprestimo = divida({
+    id: 'emp',
+    descricao: 'Consignado',
+    valorTotal: 1200000,
+    parcelas: 24,
+    primeiraEm: T(2025, 9, 10),
+  });
+
+  igual(
+    'parcela x prazo da parcelas todas iguais',
+    valorDaParcela(1200000, 24, 1),
+    valorDaParcela(1200000, 24, 2),
+  );
+  igual('e a parcela e exata', valorDaParcela(1200000, 24, 1), 50000);
+
+  const base = dados({ dividas: [emprestimo] });
+  const falta = compromissos(base, AGORA)[0]!.falta;
+  igual('doze competencias vencidas contam como pagas', falta.parcelasRestantes, 12);
+  igual('e o que falta e metade do total', falta.restante, 600000);
+  igual('a proxima e a do mes corrente', falta.proxima, '2026-09');
+  igual('o aPagar da carteira nao soma o passado', calcularCarteira(base, AGORA).aPagar, 600000);
+
+  // ------------------------------------------------------ desconto em folha
+  const cc = conta({
+    id: 'cc',
+    tipo: 'corrente',
+    saldoInicial: 100000,
+    saldoInicialEm: T(2026, 9, 1),
+  });
+  const salario = renda({ data: T(2025, 1, 5), valor: 300000, periodicidade: 'mensal', contaId: 'cc' });
+  const emFolha = { ...emprestimo, descontoEmFolha: true, contaId: 'cc' };
+  const comFolha = dados({ contas: [cc], rendas: [salario], dividas: [emFolha] });
+
+  igual(
+    'desconto em folha ja conta o mes corrente como pago',
+    compromissos(comFolha, AGORA)[0]!.falta.parcelasRestantes,
+    11,
+  );
+  igual(
+    'e a parcela do mes sai do saldo da conta',
+    saldoDaConta(cc, comFolha, AGORA).saldo,
+    100000 + 300000 - 50000,
+  );
+
+  const semConta = dados({ contas: [cc], rendas: [salario], dividas: [{ ...emFolha, contaId: null }] });
+  igual(
+    'sem conta informada, o desconto nao mexe em saldo nenhum',
+    saldoDaConta(cc, semConta, AGORA).saldo,
+    100000 + 300000,
+  );
+
+  const comPagamento = dados({
+    contas: [cc],
+    rendas: [salario],
+    dividas: [emFolha],
+    transferencias: [
+      transferencia({
+        origemContaId: 'cc',
+        alvo: 'divida',
+        alvoId: 'emp',
+        competencia: '2026-09',
+        data: T(2026, 9, 5),
+        valor: 50000,
+      }),
+    ],
+  });
+  igual(
+    'pagamento registrado por cima nao desconta duas vezes',
+    saldoDaConta(cc, comPagamento, AGORA).saldo,
+    100000 + 300000 - 50000,
+  );
+
+  // -------------------------------------------- sem desconto em folha: lembra
+  const porConta = dados({ contas: [cc], rendas: [salario], dividas: [{ ...emprestimo, contaId: 'cc' }] });
+  const cicloDoMes = compromissos(porConta, AGORA)[0]!.ciclos.find(
+    (c) => c.competencia === '2026-09',
+  );
+  igual('sem desconto em folha, a parcela do mes fica em aberto', cicloDoMes?.restante, 50000);
+  conferir('e ela nao e marcada como presumida', cicloDoMes?.presumido === false);
+
+  // ------------------------------------------------------------- a previsao
+  const linhas = projetar(porConta, { meses: 3, agora: AGORA });
+  igual(
+    'a previsao do mes corrente cobra a parcela em aberto',
+    linhas.find((l) => l.mes === '2026-09')?.comprometido,
+    50000,
+  );
+  igual(
+    'e a do mes seguinte tambem',
+    linhas.find((l) => l.mes === '2026-10')?.comprometido,
+    50000,
+  );
+  igual(
+    'com desconto em folha, o mes corrente ja nao cobra nada',
+    projetar(comFolha, { meses: 3, agora: AGORA }).find((l) => l.mes === '2026-09')?.comprometido,
+    0,
+  );
 }
 
 // ===================================================== 7. renda que muda

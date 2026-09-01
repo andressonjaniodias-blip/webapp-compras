@@ -86,7 +86,21 @@ Rode as três antes de dar qualquer mudança por concluída.
     para um cartão é *pagar a fatura*, e pagamento precisa de `competencia` para
     quitar o ciclo certo, coisa que só a tela da fatura faz. Aceitar isso como
     transferência deixaria a fatura eternamente em aberto.
-16. **`compartilhado/planos.ts` é a única fonte dos limites de plano.** Nada de
+16. **Competência vencida é presumida paga, e presunção é marcada.** Quem
+    cadastra hoje um financiamento que já corre há um ano não vai registrar
+    doze pagamentos, e esse dinheiro já saiu da conta antes do saldo de
+    partida — cobrá-lo de novo seria contagem dupla. Mas competência com
+    **qualquer** pagamento registrado nunca é presumida: pagar R$ 40 de uma
+    fatura de R$ 100 é dizer que você acompanha aquele ciclo, e presumir os
+    R$ 60 esconderia rotativo real. `Ciclo.presumido` existe para a tela dizer
+    que foi presunção em vez de fingir pagamento.
+17. **Desconto em folha: renda bruta, e a parcela sai da conta na data do
+    salário.** A entrada cadastrada é o salário *antes* do desconto do
+    empréstimo, então o consignado precisa sair de `Divida.contaId` para o
+    saldo bater com o extrato — presumir sem descontar faria o saldo subir a
+    parcela todo mês, em silêncio. Havendo pagamento registrado na
+    competência, o desconto presumido não se aplica: seriam duas saídas.
+18. **`compartilhado/planos.ts` é a única fonte dos limites de plano.** Nada de
     `if (plano === 'pago')` espalhado. E só a IA é barrada no servidor: o resto
     é porteira de tela, assumido por escrito.
 

@@ -148,6 +148,14 @@ export interface Ciclo {
   pago: number;
   /** Centavos que faltam. Nunca negativo: pagar a mais nao vira credito. */
   restante: number;
+  /**
+   * Liquidado por PRESUNCAO, e nao por pagamento registrado.
+   *
+   * Existe para a tela poder dizer "considerada paga no vencimento" em vez de
+   * fingir que houve pagamento. Presuncao marcada e corrigivel; presuncao
+   * disfarçada de pagamento vira numero errado sem pista de origem.
+   */
+  presumido: boolean;
   parcelas: Parcela[];
 }
 
@@ -157,10 +165,17 @@ export interface Ciclo {
  * A conta e feita competencia a competencia, e nao no agregado, porque um
  * pagamento parcial de setembro nao pode aparecer como adiantamento de outubro:
  * a fatura de setembro tem que continuar mostrando o que falta dela.
+ *
+ * `presumidoAte` e a competencia ate a qual tudo conta como pago sem registro
+ * nenhum. Existe porque quem cadastra hoje um financiamento que ja corre ha um
+ * ano nao vai registrar doze pagamentos para o app parar de dizer "faltam 24 de
+ * 24" — e porque esse dinheiro ja saiu da conta antes do saldo de partida, entao
+ * cobra-lo de novo seria contagem dupla.
  */
 export function porCompetencia(
   parcelas: readonly Parcela[],
   pagamentos: readonly Transferencia[],
+  presumidoAte: string | null = null,
 ): Ciclo[] {
   const mapa = new Map<string, Ciclo>();
 
@@ -171,6 +186,7 @@ export function porCompetencia(
       total: 0,
       pago: 0,
       restante: 0,
+      presumido: false,
       parcelas: [],
     };
     ciclo.total += parcela.valor;
@@ -189,6 +205,7 @@ export function porCompetencia(
         total: 0,
         pago: pagamento.valor,
         restante: 0,
+        presumido: false,
         parcelas: [],
       });
       continue;
@@ -197,7 +214,24 @@ export function porCompetencia(
   }
 
   const ciclos = [...mapa.values()];
-  for (const ciclo of ciclos) ciclo.restante = Math.max(0, ciclo.total - ciclo.pago);
+  for (const ciclo of ciclos) {
+    const falta = Math.max(0, ciclo.total - ciclo.pago);
+    // Duas condicoes, e a segunda foi um teste que a apontou:
+    //
+    // - so e presuncao quando sobrou algo para presumir; competencia quitada de
+    //   verdade continua sendo pagamento, e a tela nao deve chama-la presumida;
+    // - competencia com QUALQUER pagamento registrado nunca e presumida. Pagar
+    //   R$ 40 de uma fatura de R$ 100 e dizer ao app que voce esta acompanhando
+    //   aquele ciclo — presumir os R$ 60 restantes esconderia rotativo real. A
+    //   presuncao existe para o que voce nunca contou ao app, nao para
+    //   sobrescrever o que contou.
+    ciclo.presumido =
+      presumidoAte !== null &&
+      falta > 0 &&
+      ciclo.pago === 0 &&
+      ciclo.competencia <= presumidoAte;
+    ciclo.restante = ciclo.presumido ? 0 : falta;
+  }
   return ciclos.sort((a, b) => a.competencia.localeCompare(b.competencia));
 }
 

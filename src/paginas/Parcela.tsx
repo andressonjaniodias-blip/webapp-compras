@@ -1,35 +1,30 @@
 /**
- * Uma fatura: as parcelas que vencem naquele mes, e o pagamento dela.
+ * Uma parcela de emprestimo ou financiamento, e o pagamento dela.
  *
- * A fatura NAO e uma tabela: ela e derivada do dia de fechamento do cartao e das
- * parcelas do ciclo. Uma tabela precisaria ser reconciliada a cada edicao
- * retroativa de compra — mudar a data de uma compra de tres meses atras
- * obrigaria a recalcular faturas ja fechadas.
+ * Mesma forma da tela de fatura, e pelo mesmo motivo: o que e gravado nao e a
+ * parcela — ela e derivada de valor, prazo e data de inicio — mas o PAGAMENTO.
+ * E o pagamento que tira o dinheiro da conta, e o vinculo com `alvo: 'divida'` e
+ * a competencia que impede o app de contar isso como gasto novo.
  *
- * O que E gravado e o PAGAMENTO, e e ele que impede a contagem dupla: como
- * aponta para este cartao e esta competencia, o app sabe que aquele dinheiro ja
- * foi contado como gasto quando a compra foi lançada. Sem esse vinculo, pagar a
- * fatura seria indistinguivel de gastar de novo.
+ * Divida com desconto em folha nao chega aqui: ela e considerada paga na data do
+ * salario e nao pede registro nenhum. Esta tela existe para a outra metade, a que
+ * voce paga por conta e pode esquecer.
  */
 
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
-import {
-  acharConta,
-  faturasDoCartao,
-  pagamentosDe,
-  type SituacaoFatura,
-} from '../../compartilhado/carteira';
-import { intervaloDoCiclo } from '../../compartilhado/fatura';
+import { acharConta, pagamentosDe, presumidoAteDaDivida } from '../../compartilhado/carteira';
+import { parcelasDaDivida, porCompetencia } from '../../compartilhado/parcelamento';
+import { podeEnviar } from '../../compartilhado/tipos';
 import { excluirTransferencia, registrarTransferencia } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
 import { formatarData, nomeMes } from '../lib/datas';
 import { useApp } from '../estado';
 
-export function Fatura() {
-  const { contaId = '', competencia = '' } = useParams();
+export function Parcela() {
+  const { dividaId = '', competencia = '' } = useParams();
   const navegar = useNavigate();
   const { atualizarPendentes } = useApp();
   const { dados, carregando } = useFinanceiro();
@@ -45,31 +40,35 @@ export function Fatura() {
     );
   }
 
-  const conta = acharConta(dados.contas, contaId);
-  if (!conta || conta.tipo !== 'credito') {
+  const divida = dados.dividas.find((d) => d.id === dividaId);
+  if (!divida) {
     return (
       <div className="app">
-        <p className="vazio">Cartão não encontrado.</p>
+        <p className="vazio">Empréstimo não encontrado.</p>
       </div>
     );
   }
 
   const agora = Date.now();
-  const fatura = faturasDoCartao(conta, dados, agora).find((f) => f.competencia === competencia);
-  const ciclo = intervaloDoCiclo(conta, competencia);
-  const pagamentos = pagamentosDe(dados.transferencias, 'cartao', conta.id).filter(
-    (p) => p.competencia === competencia,
-  );
-  const contasDeOrigem = dados.contas.filter((c) => c.tipo === 'corrente' || c.tipo === 'dinheiro');
-  const restante = fatura?.restante ?? 0;
+  const pagamentosDaDivida = pagamentosDe(dados.transferencias, 'divida', divida.id);
+  const ciclo = porCompetencia(
+    parcelasDaDivida(divida),
+    pagamentosDaDivida,
+    presumidoAteDaDivida(divida, dados, agora),
+  ).find((c) => c.competencia === competencia);
+
+  const pagamentos = pagamentosDaDivida.filter((p) => p.competencia === competencia);
+  const contasDeOrigem = dados.contas.filter(podeEnviar);
+  const restante = ciclo?.restante ?? 0;
+  const padrao = contasDeOrigem.find((c) => c.id === divida.contaId) ?? contasDeOrigem[0];
 
   async function pagar() {
-    const contaOrigem = origem || contasDeOrigem[0]?.id;
+    const contaOrigem = origem || padrao?.id;
     if (!contaOrigem) return;
     await registrarTransferencia({
       origemContaId: contaOrigem,
-      alvo: 'cartao',
-      alvoId: contaId,
+      alvo: 'divida',
+      alvoId: dividaId,
       competencia,
       valor: valor ?? restante,
       data: Date.now(),
@@ -85,62 +84,33 @@ export function Fatura() {
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/carteira')}>
             ‹
           </button>
-          <h1>{conta.apelido}</h1>
+          <h1>{divida.descricao || 'Empréstimo'}</h1>
         </div>
       </header>
 
       <section className="cartao">
-        <span className="campo-rotulo">
-          Fatura de {nomeMes(competencia)} <Situacao situacao={fatura?.situacao ?? 'aberta'} />
-        </span>
-        <div className="total-grande">{formatarReais(fatura?.total ?? 0)}</div>
-        <p className="dica">
-          compras de {formatarData(ciclo.inicio)} a {formatarData(ciclo.fim)} · vence em{' '}
-          {formatarData(fatura?.vencimentoEm ?? ciclo.fim)}
-        </p>
-        {fatura?.presumido && (
+        <span className="campo-rotulo">Parcela de {nomeMes(competencia)}</span>
+        <div className="total-grande">{formatarReais(ciclo?.total ?? 0)}</div>
+        {ciclo && (
+          <p className="dica">
+            {ciclo.parcelas[0]
+              ? `parcela ${ciclo.parcelas[0].indice} de ${ciclo.parcelas[0].de} · vence em ${formatarData(ciclo.vencimentoEm)}`
+              : `vence em ${formatarData(ciclo.vencimentoEm)}`}
+          </p>
+        )}
+        {ciclo?.presumido && (
           <p className="dica">
             Considerada paga no vencimento, porque a competência já passou. Se não foi assim,
             registre o pagamento abaixo — o registro vale mais que a presunção.
           </p>
         )}
-        {fatura && fatura.pago > 0 && (
+        {ciclo && ciclo.pago > 0 && (
           <p className="dica">
-            pago {formatarReais(fatura.pago)}
+            pago {formatarReais(ciclo.pago)}
             {restante > 0 && ` · faltam ${formatarReais(restante)}`}
           </p>
         )}
       </section>
-
-      <h2 className="secao-titulo">O que compõe esta fatura</h2>
-
-      {(fatura?.parcelas.length ?? 0) === 0 && (
-        <p className="vazio">Nenhuma compra cai nesta fatura.</p>
-      )}
-
-      <ul className="lista">
-        {(fatura?.parcelas ?? [])
-          .slice()
-          .sort((a, b) => a.descricao.localeCompare(b.descricao))
-          .map((parcela) => (
-            <li key={parcela.fonteId + '-' + parcela.indice}>
-              <button
-                type="button"
-                className="item-linha"
-                style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', font: 'inherit', color: 'inherit' }}
-                onClick={() => navegar('/compra/' + parcela.fonteId)}
-              >
-                <div className="item-corpo">
-                  <div className="item-nome">{parcela.descricao}</div>
-                  <div className="item-meta">
-                    {parcela.de > 1 ? `parcela ${parcela.indice}/${parcela.de}` : 'à vista'}
-                  </div>
-                </div>
-                <span className="item-valor">{formatarReais(parcela.valor)}</span>
-              </button>
-            </li>
-          ))}
-      </ul>
 
       <h2 className="secao-titulo">Pagamento</h2>
 
@@ -155,11 +125,11 @@ export function Fatura() {
             <select
               id="origem"
               className="entrada"
-              value={origem || contasDeOrigem[0]!.id}
+              value={origem || (padrao?.id ?? '')}
               onChange={(e) => setOrigem(e.target.value)}
             >
               {contasDeOrigem.map((c) => (
-                <option key={c.id} value={c.id}>{c.apelido}</option>
+                <option key={c.id} value={c.id}>{c.apelido || 'Conta'}</option>
               ))}
             </select>
           </div>
@@ -167,10 +137,6 @@ export function Fatura() {
           <div className="campo">
             <label className="campo-rotulo" htmlFor="valorPago">Valor</label>
             <CampoDinheiro id="valorPago" valor={valor ?? restante} onChange={setValor} />
-            <p className="dica">
-              Pagar menos que o total é permitido: o resto continua devendo nesta fatura, e
-              não vira desconto na próxima.
-            </p>
           </div>
 
           <button
@@ -183,7 +149,7 @@ export function Fatura() {
           </button>
           <p className="dica">
             Isto tira o dinheiro da conta escolhida e <strong>não</strong> conta como gasto novo —
-            o gasto já foi contado quando a compra foi lançada.
+            pagar dívida é mudar de bolso, não gastar de novo.
           </p>
         </div>
       )}
@@ -218,9 +184,4 @@ export function Fatura() {
       )}
     </div>
   );
-}
-
-export function Situacao({ situacao }: { situacao: SituacaoFatura }) {
-  const rotulo = { aberta: 'aberta', fechada: 'fechada', paga: 'paga' }[situacao];
-  return <span className={'selo selo-' + situacao}>{rotulo}</span>;
 }

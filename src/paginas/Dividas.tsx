@@ -1,22 +1,30 @@
 /**
  * Emprestimos e financiamentos.
  *
- * Comeca simples de proposito: valor total, quantas parcelas e quando começou. O
- * `valorTotal` e o TOTAL A PAGAR, com juros ja dentro — o app nao calcula juros,
- * nao amortiza e nao sabe de IOF. Para a pergunta que ele existe para responder
- * ("posso comprar isto?"), o que importa e quanto sai por mes e ate quando.
+ * Pergunta o que voce tem em maos: VALOR DA PARCELA, quantas e quando começou.
+ * O app nao calcula juros, nao amortiza e nao sabe de IOF — nem precisa: com
+ * parcela vezes prazo ele ja sabe quanto sai por mes e ate quando, que e o que
+ * pesa na pergunta "posso comprar isto?".
  *
- * A mesma matematica das parcelas de cartao vale aqui, entao "quanto falta" e a
- * mesma conta nos dois lugares.
+ * O modelo continua guardando `valorTotal`, e a troca de pergunta traz um ganho
+ * fino de graça: o total vira multiplo exato da parcela, entao `valorDaParcela`
+ * devolve a parcela cheia e some o caso "a primeira absorve os centavos", que
+ * podia nao bater com o contrato.
+ *
+ * Uma divida cadastrada hoje pode ter começado ha um ano. As parcelas ja
+ * vencidas contam como pagas por presuncao — ver `presumidoAteDaDivida` em
+ * `compartilhado/carteira.ts` —, senao a tela diria "faltam 24 de 24" para quem
+ * ja pagou metade.
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
+import { CampoNumero } from '../componentes/CampoNumero';
 import { TIPOS_DIVIDA } from '../../compartilhado/constantes';
 import { compromissos } from '../../compartilhado/carteira';
 import { valorDaParcela } from '../../compartilhado/parcelamento';
-import type { Divida } from '../../compartilhado/tipos';
+import { podeEnviar, type Divida } from '../../compartilhado/tipos';
 import { atualizarDivida, criarDivida, excluirDivida } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
@@ -65,6 +73,7 @@ export function Dividas() {
 
       <ul className="lista">
         {dados.dividas.map((divida) => {
+          const conta = dados.contas.find((c) => c.id === divida.contaId);
           const falta = faltaPorId.get(divida.id);
           const pagas = divida.parcelas - (falta?.parcelasRestantes ?? divida.parcelas);
           const progresso =
@@ -77,6 +86,7 @@ export function Dividas() {
               <li key={divida.id}>
                 <FormDivida
                   divida={divida}
+                  contas={dados.contas.filter(podeEnviar)}
                   onFechar={async () => {
                     await atualizarPendentes();
                     setEditando(null);
@@ -107,6 +117,11 @@ export function Dividas() {
                 <div className="compra-meta" style={{ marginTop: 6 }}>
                   {pagas} de {divida.parcelas} pagas ·{' '}
                   {formatarReais(valorDaParcela(divida.valorTotal, divida.parcelas, 2))}/mês
+                  {divida.descontoEmFolha
+                    ? ' · desconto em folha'
+                    : conta
+                      ? ` · sai de ${conta.apelido}`
+                      : ''}
                 </div>
               </button>
             </li>
@@ -123,13 +138,32 @@ export function Dividas() {
   );
 }
 
-function FormDivida({ divida, onFechar }: { divida: Divida; onFechar: () => Promise<void> }) {
+function FormDivida({
+  divida,
+  contas,
+  onFechar,
+}: {
+  divida: Divida;
+  contas: readonly { id: string; apelido: string }[];
+  onFechar: () => Promise<void>;
+}) {
   async function mudar(mudancas: Partial<Omit<Divida, 'id'>>) {
     await atualizarDivida(divida.id, mudancas);
   }
 
-  const parcela = valorDaParcela(divida.valorTotal, divida.parcelas, 2);
-  const primeira = valorDaParcela(divida.valorTotal, divida.parcelas, 1);
+  /*
+   * A parcela e DERIVADA do total — guardar as duas no banco abriria a porta
+   * para elas discordarem —, mas enquanto o formulario esta aberto ela vive em
+   * estado local.
+   *
+   * Sem isso havia uma corrida real: digitar a parcela e mudar o prazo em
+   * seguida recalculava o total a partir de uma parcela que ainda nao tinha
+   * voltado do Dexie, e o valor digitado sumia. Ler do estado local e sincrono,
+   * entao a ordem em que voce mexe nos dois campos deixa de importar.
+   */
+  const [parcelaEditada, setParcelaEditada] = useState<number | null>(null);
+  const parcela =
+    parcelaEditada ?? (divida.parcelas > 0 ? Math.round(divida.valorTotal / divida.parcelas) : 0);
 
   return (
     <div className="form-item">
@@ -161,29 +195,30 @@ function FormDivida({ divida, onFechar }: { divida: Divida; onFechar: () => Prom
       </div>
 
       <div className="campo">
-        <label className="campo-rotulo" htmlFor={'total-' + divida.id}>Total a pagar</label>
+        <label className="campo-rotulo" htmlFor={'parc-' + divida.id}>Valor da parcela</label>
         <CampoDinheiro
-          id={'total-' + divida.id}
-          valor={divida.valorTotal}
-          onChange={(valorTotal) => void mudar({ valorTotal })}
+          id={'parc-' + divida.id}
+          valor={parcela}
+          onChange={(valor) => {
+            setParcelaEditada(valor);
+            void mudar({ valorTotal: valor * divida.parcelas });
+          }}
         />
         <p className="dica">
-          Com os juros já dentro — é a soma de todas as parcelas. O app não calcula juros.
+          O valor que sai por mês, com os juros já dentro. O app não calcula juros — com a
+          parcela e o prazo ele já sabe quanto falta e até quando.
         </p>
       </div>
 
       <div className="grade-item-4">
         <div>
           <label className="mini-rotulo" htmlFor={'par-' + divida.id}>Parcelas</label>
-          <input
+          <CampoNumero
             id={'par-' + divida.id}
-            className="entrada"
-            type="number"
+            valor={divida.parcelas}
             min={1}
             max={480}
-            inputMode="numeric"
-            value={divida.parcelas}
-            onChange={(e) => void mudar({ parcelas: Math.max(1, Number(e.target.value) || 1) })}
+            onChange={(parcelas) => void mudar({ parcelas, valorTotal: parcela * parcelas })}
           />
         </div>
         <div>
@@ -203,10 +238,42 @@ function FormDivida({ divida, onFechar }: { divida: Divida; onFechar: () => Prom
 
       {divida.valorTotal > 0 && (
         <p className="dica">
-          {divida.parcelas}x de {formatarReais(parcela)}
-          {primeira !== parcela && ` (a primeira, de ${formatarReais(primeira)}, absorve o resto)`}.
+          {divida.parcelas}x de {formatarReais(parcela)} · total{' '}
+          {formatarReais(divida.valorTotal)}. Parcelas já vencidas contam como pagas.
         </p>
       )}
+
+      <label className="interruptor" style={{ marginTop: 12 }}>
+        <input
+          type="checkbox"
+          checked={divida.descontoEmFolha}
+          onChange={(e) => void mudar({ descontoEmFolha: e.target.checked })}
+        />
+        <span>Desconto automático em folha</span>
+      </label>
+      <p className="dica">
+        Consignado não atrasa: a parcela é considerada paga na data em que o salário cai, e o
+        app não pede para você registrar o pagamento. Sem isto, ele lembra você todo mês.
+      </p>
+
+      <div className="campo">
+        <label className="campo-rotulo" htmlFor={'conta-' + divida.id}>Sai da conta</label>
+        <select
+          id={'conta-' + divida.id}
+          className="entrada"
+          value={divida.contaId ?? ''}
+          onChange={(e) => void mudar({ contaId: e.target.value || null })}
+        >
+          <option value="">Não informado</option>
+          {contas.map((conta) => (
+            <option key={conta.id} value={conta.id}>{conta.apelido || 'Conta'}</option>
+          ))}
+        </select>
+        <p className="dica">
+          A entrada que você cadastrou é o salário <strong>antes</strong> do desconto do
+          empréstimo. Sem dizer de qual conta a parcela sai, o saldo sobe esse valor todo mês.
+        </p>
+      </div>
 
       <div className="campo">
         <label className="campo-rotulo" htmlFor={'obs-' + divida.id}>Observação</label>

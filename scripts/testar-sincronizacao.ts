@@ -118,6 +118,8 @@ function dividaExemplo(id: string, atualizadoEm: number): Divida {
     valorTotal: 1200000,
     parcelas: 36,
     primeiraEm: Date.UTC(2026, 6, 10, 12, 0),
+    descontoEmFolha: false,
+    contaId: null,
     observacao: '',
     atualizadoEm,
     excluidoEm: null,

@@ -141,6 +141,115 @@ export function entradasEntre(
   return total;
 }
 
+// -------------------------------------------------------------- presuncao
+
+/**
+ * Ate que competencia as parcelas contam como pagas sem registro nenhum.
+ *
+ * Sempre o mes ANTERIOR ao corrente. Quem cadastra hoje um financiamento que ja
+ * corre ha um ano nao vai registrar doze pagamentos so para o app parar de dizer
+ * "faltam 24 de 24" — e esse dinheiro ja saiu da conta antes do saldo de
+ * partida, entao cobra-lo de novo seria contagem dupla.
+ *
+ * A consequencia esta assumida por escrito: quem esta ATRASADO ve menos divida
+ * do que tem. Por isso o ciclo presumido e marcado (`Ciclo.presumido`) e a tela
+ * diz que foi presuncao, com o pagamento real podendo ser registrado por cima.
+ */
+export function presumidoAteDoCartao(agora: number): string {
+  return somarMeses(chaveDoMes(agora), -1);
+}
+
+/**
+ * O dia do mes em que o salario cai.
+ *
+ * A maior renda mensal vigente manda: e ela o salario, e nao um extra recorrente
+ * pequeno. `null` quando nao ha nenhuma cadastrada.
+ */
+export function diaDoSalario(dados: DadosFinanceiros): number | null {
+  const mensais = dados.rendas.filter(
+    (renda) => naoExcluido(renda) && renda.periodicidade === 'mensal' && renda.encerradoEm === null,
+  );
+  if (mensais.length === 0) return null;
+  const principal = mensais.reduce((maior, renda) => (renda.valor > maior.valor ? renda : maior));
+  return new Date(principal.data).getDate();
+}
+
+/**
+ * Quando a parcela descontada em folha sai, numa competencia.
+ *
+ * E a data do salario, porque e ali que o consignado e retido. Sem renda mensal
+ * cadastrada, cai no dia de vencimento da propria divida.
+ */
+export function dataDoDescontoEmFolha(
+  divida: Divida,
+  dados: DadosFinanceiros,
+  competencia: string,
+): number {
+  const { ano, mes } = partesDaChave(competencia);
+  const dia = diaDoSalario(dados) ?? new Date(divida.primeiraEm).getDate();
+  return new Date(ano, mes, diaDoMesSeguro(ano, mes, dia), 0, 0, 0, 0).getTime();
+}
+
+/**
+ * Ate que competencia as parcelas DESTA divida contam como pagas.
+ *
+ * Desconto em folha inclui o mes corrente assim que o salario cai: ele nao
+ * atrasa, e esperar o mes virar mostraria uma parcela em aberto que ja foi
+ * retida.
+ */
+export function presumidoAteDaDivida(
+  divida: Divida,
+  dados: DadosFinanceiros,
+  agora: number,
+): string {
+  const anterior = somarMeses(chaveDoMes(agora), -1);
+  if (!divida.descontoEmFolha) return anterior;
+  const mes = chaveDoMes(agora);
+  return agora >= dataDoDescontoEmFolha(divida, dados, mes) ? mes : anterior;
+}
+
+/**
+ * Quanto de desconto em folha ja saiu desta conta no periodo.
+ *
+ * A renda cadastrada e o BRUTO, sem o desconto do emprestimo, entao o consignado
+ * precisa sair da conta para o saldo bater com o extrato. Sem isto o saldo sobe
+ * o valor da parcela todo mes, em silencio.
+ */
+function descontosEmFolhaDaConta(
+  conta: Conta,
+  dados: DadosFinanceiros,
+  desde: number,
+  agora: number,
+): number {
+  let total = 0;
+
+  for (const divida of dados.dividas) {
+    if (!naoExcluido(divida) || !divida.descontoEmFolha) continue;
+    if (divida.contaId !== conta.id) continue;
+
+    const limite = presumidoAteDaDivida(divida, dados, agora);
+    const pagoPorCompetencia = new Map<string, number>();
+    for (const pagamento of pagamentosDe(dados.transferencias, 'divida', divida.id)) {
+      pagoPorCompetencia.set(
+        pagamento.competencia,
+        (pagoPorCompetencia.get(pagamento.competencia) ?? 0) + pagamento.valor,
+      );
+    }
+
+    for (const parcela of parcelasDaDivida(divida)) {
+      if (parcela.competencia > limite) continue;
+      // Pagamento registrado ja sai pela transferencia. Presumir de novo aqui
+      // tiraria o mesmo dinheiro duas vezes.
+      if ((pagoPorCompetencia.get(parcela.competencia) ?? 0) > 0) continue;
+      const quando = dataDoDescontoEmFolha(divida, dados, parcela.competencia);
+      if (quando < desde || quando > agora) continue;
+      total += parcela.valor;
+    }
+  }
+
+  return total;
+}
+
 // ------------------------------------------------------------------ contas
 
 /** A compra tira dinheiro de uma conta na hora? Credito nao: vira fatura. */
@@ -202,7 +311,7 @@ export function saldoDaConta(
     .reduce((soma, t) => soma + t.valor, 0);
 
   const entradas = entradasRenda + recebidas;
-  const saidas = gastos + enviadas;
+  const saidas = gastos + enviadas + descontosEmFolhaDaConta(conta, dados, desde, agora);
 
   return { conta, entradas, saidas, saldo: conta.saldoInicial + entradas - saidas };
 }
@@ -258,7 +367,7 @@ export function faturasDoCartao(
   const parcelas = parcelasDoCartao(conta, dados.compras);
   const pagamentos = pagamentosDe(dados.transferencias, 'cartao', conta.id);
 
-  return porCompetencia(parcelas, pagamentos).map((ciclo) => ({
+  return porCompetencia(parcelas, pagamentos, presumidoAteDoCartao(agora)).map((ciclo) => ({
     ...ciclo,
     contaId: conta.id,
     apelido: conta.apelido,
@@ -269,6 +378,8 @@ export function faturasDoCartao(
 }
 
 function situacaoDaFatura(ciclo: Ciclo, fechamentoEm: number, agora: number): SituacaoFatura {
+  // Presumida tambem aparece como paga: a tela e que diz de onde veio, para o
+  // numero e a explicacao nunca divergirem.
   if (ciclo.total > 0 && ciclo.restante === 0) return 'paga';
   return agora > fechamentoEm ? 'fechada' : 'aberta';
 }
@@ -301,6 +412,7 @@ export function compromissos(dados: DadosFinanceiros, agora: number): Compromiss
     const ciclos = porCompetencia(
       parcelasDoCartao(conta, dados.compras),
       pagamentosDe(dados.transferencias, 'cartao', conta.id),
+      presumidoAteDoCartao(agora),
     );
     const falta = quantoFalta(ciclos);
     saida.push({
@@ -318,6 +430,7 @@ export function compromissos(dados: DadosFinanceiros, agora: number): Compromiss
     const ciclos = porCompetencia(
       parcelasDaDivida(divida),
       pagamentosDe(dados.transferencias, 'divida', divida.id),
+      presumidoAteDaDivida(divida, dados, agora),
     );
     saida.push({
       origem: 'divida',

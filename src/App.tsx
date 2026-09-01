@@ -16,6 +16,7 @@ import { Entrar } from './paginas/Entrar';
 import { Fatura } from './paginas/Fatura';
 import { ListaCompras } from './paginas/ListaCompras';
 import { Metas } from './paginas/Metas';
+import { Parcela } from './paginas/Parcela';
 import { Rendas } from './paginas/Rendas';
 import { Resumo } from './paginas/Resumo';
 import { Simular } from './paginas/Simular';
@@ -52,6 +53,7 @@ function Conteudo() {
       <Route path="/transferencias" element={<Transferencias />} />
       <Route path="/metas" element={<Metas />} />
       <Route path="/fatura/:contaId/:competencia" element={<Fatura />} />
+      <Route path="/parcela/:dividaId/:competencia" element={<Parcela />} />
       <Route path="*" element={<ListaCompras />} />
     </Routes>
   );

@@ -24,7 +24,7 @@ import { podeEnviar, podeReceber } from '../../compartilhado/tipos';
 import { gravarGastoManual } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
-import { nomeMes } from '../lib/datas';
+import { formatarData, nomeMes } from '../lib/datas';
 import { useApp } from '../estado';
 import { Situacao } from './Fatura';
 
@@ -65,6 +65,18 @@ export function Carteira() {
   const daParaTransferir = dados.contas
     .filter(podeEnviar)
     .some((e) => dados.contas.filter(podeReceber).some((r) => r.id !== e.id));
+
+  // As parcelas que voce mesmo paga, no mes corrente. Desconto em folha fica de
+  // fora: ele nao atrasa e nao pede registro, entao lembrar dele seria ruido.
+  const parcelasDoMes = carteira.compromissos
+    .filter((c) => c.origem === 'divida')
+    .flatMap((compromisso) => {
+      const divida = dados.dividas.find((d) => d.id === compromisso.id);
+      if (!divida || divida.descontoEmFolha) return [];
+      return compromisso.ciclos
+        .filter((ciclo) => ciclo.competencia === mesAtual && ciclo.restante > 0)
+        .map((ciclo) => ({ compromisso, ciclo }));
+    });
 
   const faturasEmAberto = carteira.compromissos
     .filter((c) => c.origem === 'cartao')
@@ -157,6 +169,32 @@ export function Carteira() {
               </div>
             )}
           </div>
+        </>
+      )}
+
+      {parcelasDoMes.length > 0 && (
+        <>
+          <h2 className="secao-titulo">Parcelas a pagar</h2>
+          <ul className="lista">
+            {parcelasDoMes.map(({ compromisso, ciclo }) => (
+              <li key={compromisso.id + ciclo.competencia}>
+                <button
+                  type="button"
+                  className="compra"
+                  onClick={() => navegar(`/parcela/${compromisso.id}/${ciclo.competencia}`)}
+                >
+                  <div className="compra-corpo">
+                    <div className="compra-titulo">{compromisso.descricao}</div>
+                    <div className="compra-meta">
+                      {nomeMes(ciclo.competencia)} · vence em {formatarData(ciclo.vencimentoEm)}
+                      {ciclo.pago > 0 && ` · pago ${formatarReais(ciclo.pago)}`}
+                    </div>
+                  </div>
+                  <span className="compra-valor">{formatarReais(ciclo.restante)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </>
       )}
 

@@ -17,6 +17,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
+import { CampoNumero } from '../componentes/CampoNumero';
 import { SeletorChips } from '../componentes/SeletorChips';
 import { TabelaPrevisao } from '../componentes/TabelaPrevisao';
 import { CATEGORIAS, CATEGORIA_PADRAO } from '../../compartilhado/constantes';
@@ -112,16 +113,7 @@ export function Simular() {
       {noCredito && (
         <div className="campo">
           <label className="campo-rotulo" htmlFor="vezes">Em quantas vezes</label>
-          <input
-            id="vezes"
-            className="entrada"
-            type="number"
-            min={1}
-            max={48}
-            inputMode="numeric"
-            value={parcelas}
-            onChange={(e) => setParcelas(Math.max(1, Number(e.target.value) || 1))}
-          />
+          <CampoNumero id="vezes" valor={parcelas} min={1} max={48} onChange={setParcelas} />
         </div>
       )}
 

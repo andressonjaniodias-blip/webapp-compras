@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
+import { CampoNumero } from '../componentes/CampoNumero';
 import { FormItem, type ValoresFormItem } from '../componentes/FormItem';
 import { LinhaItem } from '../componentes/LinhaItem';
 import { SeletorChips } from '../componentes/SeletorChips';
@@ -265,15 +266,12 @@ export function EditarCompra() {
       {noCredito && (
         <div className="campo">
           <label className="campo-rotulo" htmlFor="parcelas">Em quantas vezes</label>
-          <input
+          <CampoNumero
             id="parcelas"
-            className="entrada"
-            type="number"
+            valor={vezes}
             min={1}
             max={48}
-            inputMode="numeric"
-            value={vezes}
-            onChange={(e) => void mudar({ parcelas: Math.max(1, Number(e.target.value) || 1) })}
+            onChange={(parcelas) => void mudar({ parcelas })}
           />
           {previa && (
             <p className="dica">

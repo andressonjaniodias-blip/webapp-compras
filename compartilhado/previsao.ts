@@ -42,6 +42,8 @@ import {
   mesesCompletosAntes,
   parcelasDoCartao,
   pagamentosDe,
+  presumidoAteDaDivida,
+  presumidoAteDoCartao,
   type Carteira,
   type DadosFinanceiros,
 } from './carteira';
@@ -251,7 +253,11 @@ function comprometidoPorMes(dados: DadosFinanceiros, agora: number): Map<string,
       return quando === undefined || chaveDoMes(quando) >= mesAtual;
     });
 
-    const ciclos = porCompetencia(todas, pagamentosDe(dados.transferencias, 'cartao', conta.id));
+    const ciclos = porCompetencia(
+      todas,
+      pagamentosDe(dados.transferencias, 'cartao', conta.id),
+      presumidoAteDoCartao(agora),
+    );
     const pagoPorMes = new Map(ciclos.map((c) => [c.competencia, c.pago]));
 
     const porMes = new Map<string, number>();
@@ -267,9 +273,13 @@ function comprometidoPorMes(dados: DadosFinanceiros, agora: number): Map<string,
 
   for (const divida of dados.dividas) {
     if (!naoExcluido(divida)) continue;
+    // A presuncao entra aqui tambem, e nao so na Carteira: sem ela, o
+    // consignado ja retido no contracheque deste mes apareceria como
+    // compromisso a pagar, e a sobra do mes sairia menor do que e.
     const ciclos = porCompetencia(
       parcelasDaDivida(divida),
       pagamentosDe(dados.transferencias, 'divida', divida.id),
+      presumidoAteDaDivida(divida, dados, agora),
     );
     for (const ciclo of ciclos) {
       if (ciclo.competencia < mesAtual) continue;
@@ -390,6 +400,7 @@ export function simular(
     const usadoAgora = porCompetencia(
       parcelasDoCartao(conta, dados.compras),
       pagamentosDe(dados.transferencias, 'cartao', conta.id),
+      presumidoAteDoCartao(hipotese.data),
     ).reduce((soma, ciclo) => soma + ciclo.restante, 0);
     const comprometido = usadoAgora + hipotese.valor;
     usoDoLimite = comprometido / conta.limite;

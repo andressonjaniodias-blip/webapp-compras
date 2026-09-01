@@ -249,6 +249,8 @@ const TABELA_DIVIDAS: Tabela<Divida> = {
     ['valor_total', 'bigint'],
     ['parcelas', 'int'],
     ['primeira_em', 'bigint'],
+    ['desconto_em_folha', 'boolean'],
+    ['conta_id', 'text'],
     ['observacao', 'text'],
     ['atualizado_em', 'bigint'],
     ['excluido_em', 'bigint'],
@@ -260,6 +262,10 @@ const TABELA_DIVIDAS: Tabela<Divida> = {
     valor_total: d.valorTotal ?? 0,
     parcelas: d.parcelas ?? 1,
     primeira_em: d.primeiraEm,
+    // Divida gravada antes desta versao nao tem os dois. Os padroes mantem o
+    // registro antigo valido sem migrar linha nenhuma.
+    desconto_em_folha: d.descontoEmFolha ?? false,
+    conta_id: d.contaId ?? null,
     observacao: d.observacao ?? '',
     atualizado_em: d.atualizadoEm,
     excluido_em: d.excluidoEm,
@@ -271,6 +277,8 @@ const TABELA_DIVIDAS: Tabela<Divida> = {
     valorTotal: numero(l.valor_total),
     parcelas: numero(l.parcelas),
     primeiraEm: numero(l.primeira_em),
+    descontoEmFolha: l.desconto_em_folha === true,
+    contaId: l.conta_id === null || l.conta_id === undefined ? null : String(l.conta_id),
     observacao: texto(l.observacao),
     atualizadoEm: numero(l.atualizado_em),
     excluidoEm: numeroOuNulo(l.excluido_em),

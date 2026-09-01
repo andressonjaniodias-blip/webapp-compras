@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
+import { CampoNumero } from '../componentes/CampoNumero';
 import { TIPOS_CONTA } from '../../compartilhado/constantes';
 import { calcularCarteira } from '../../compartilhado/carteira';
 import { temSaldo, type Conta, type TipoConta } from '../../compartilhado/tipos';
@@ -176,28 +177,22 @@ function FormConta({
           <div className="grade-item-4">
             <div>
               <label className="mini-rotulo" htmlFor={'fech-' + conta.id}>Fecha no dia</label>
-              <input
+              <CampoNumero
                 id={'fech-' + conta.id}
-                className="entrada"
-                type="number"
+                valor={conta.diaFechamento}
                 min={1}
                 max={31}
-                inputMode="numeric"
-                value={conta.diaFechamento}
-                onChange={(e) => void mudar({ diaFechamento: Number(e.target.value) || 1 })}
+                onChange={(diaFechamento) => void mudar({ diaFechamento })}
               />
             </div>
             <div>
               <label className="mini-rotulo" htmlFor={'venc-' + conta.id}>Vence no dia</label>
-              <input
+              <CampoNumero
                 id={'venc-' + conta.id}
-                className="entrada"
-                type="number"
+                valor={conta.diaVencimento}
                 min={1}
                 max={31}
-                inputMode="numeric"
-                value={conta.diaVencimento}
-                onChange={(e) => void mudar({ diaVencimento: Number(e.target.value) || 1 })}
+                onChange={(diaVencimento) => void mudar({ diaVencimento })}
               />
             </div>
           </div>
