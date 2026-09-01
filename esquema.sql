@@ -109,6 +109,13 @@ CREATE TABLE IF NOT EXISTS dividas (
   versao        BIGINT  NOT NULL
 );
 
+-- CREATE TABLE IF NOT EXISTS nao acrescenta coluna em tabela que ja existe.
+-- Toda coluna nova precisa TAMBEM de um ALTER aqui, senao ela nasce so em banco
+-- novo e todo banco publicado quebra com 42703 — e a autocura reaplica um
+-- esquema que nao tem como consertar nada. Ja aconteceu duas vezes.
+ALTER TABLE dividas ADD COLUMN IF NOT EXISTS desconto_em_folha BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE dividas ADD COLUMN IF NOT EXISTS conta_id TEXT;
+
 CREATE TABLE IF NOT EXISTS metas (
   id             TEXT PRIMARY KEY,
   descricao      TEXT    NOT NULL DEFAULT '',
