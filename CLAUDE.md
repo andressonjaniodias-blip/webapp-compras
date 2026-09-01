@@ -128,6 +128,14 @@ Rode as três antes de dar qualquer mudança por concluída.
   tocar nos dados reais, suba com as variáveis vazias — elas vencem o arquivo,
   porque `process.loadEnvFile` não sobrescreve o que já existe no ambiente:
   `DATABASE_URL= SENHA_HASH= SESSAO_SEGREDO= PGLITE_DIR=/tmp/pg npm run dev`.
+- **Coluna nova exige TAMBÉM um `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.**
+  `CREATE TABLE IF NOT EXISTS` não acrescenta coluna em tabela que já existe,
+  então coluna declarada só no `CREATE` nasce em banco novo e falta em todo
+  banco publicado — e a autocura reaplica um esquema que não tem como
+  consertar nada. Aconteceu duas vezes (`compras` na v2, `dividas` em
+  01/09/2026). O teste `toda coluna que a sincronizacao escreve existe no
+  banco`, em `teste:sync`, existe para pegar a terceira: ele aplica o esquema
+  sobre um banco antigo e compara com `COLUNAS_SINCRONIZADAS`.
 - **Ao acrescentar tabela ou coluna, aplique o esquema no banco publicado** com
   `npm run banco:criar`. Esquecer isso derrubou toda a sincronização uma vez
   (31/08/2026), então hoje `/api/sync` **se autocura**: falhou com `42P01` ou
