@@ -85,6 +85,39 @@ body {
   background: var(--superficie-alta);
 }
 
+/*
+ * O rotulo que so aparece quando ha largura para ele.
+ *
+ * No celular o cabecalho e so icone, pelo espaco do polegar. No PC sobra
+ * largura, e emoji sozinho nao diz o nome do lugar: abrir o app no computador e
+ * nao achar o controle financeiro aconteceu de verdade, porque o unico caminho
+ * ate ele era um 💳 sem legenda. Esta e a primeira e unica media query do
+ * projeto — o resto do layout e a mesma coluna de 640px nos dois aparelhos, e
+ * continua sendo de proposito.
+ *
+ * O `:has()` restringe o efeito aos botoes que tem rotulo: sem ele, o `‹` de
+ * voltar das outras telas engordaria a toa.
+ */
+.rotulo-largo {
+  display: none;
+}
+
+@media (min-width: 720px) {
+  .topo-linha .botao-icone:has(.rotulo-largo) {
+    width: auto;
+    grid-auto-flow: column;
+    gap: 8px;
+    padding: 0 14px;
+  }
+
+  .rotulo-largo {
+    display: inline;
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
 /* --------------------------------------------------------------- blocos */
 
 .cartao {
