@@ -1,17 +1,22 @@
 /**
- * O resumo do mes: quanto saiu, em que, como foi pago e o que a IA acha disso.
+ * O resumo do mes — DUAS perguntas que esta tela respondia embaralhadas numa so.
+ *
+ *   1. quanto eu COMPREI no mes?   inclui credito; e o que passou no caixa da loja
+ *   2. quanto SAIU do meu dinheiro? o fechamento de caixa, onde credito nao entra
+ *
+ * Antes havia um numero grande sem rotulo (a pergunta 1) e, logo abaixo, um bloco
+ * de caixa (a pergunta 2) cujo "Saiu do caixa" era menor. Dois totais
+ * concorrentes, nenhum dizendo o que era. Hoje sao dois cartoes com titulo.
+ *
+ * O RAZAO existe para a conta poder ser conferida A OLHO. A versao anterior
+ * subtraia `aVencer` dentro da sobra e nunca o mostrava, entao "entrou 3.500,
+ * saiu 1.200, sobra 900" nao fechava e nao havia como descobrir por que. Hoje
+ * toda parcela da subtracao tem linha, e a regua separa o total. Quem
+ * acrescentar um termo a `MesFinanceiro.sobra` precisa dar linha a ele aqui — o
+ * teste "o razao do mes fecha", em `teste:contas`, falha se nao der.
  *
  * As contas sao feitas no aparelho, a partir do banco local — abrem na hora e
  * funcionam sem internet. So o botao de dicas fala com o servidor.
- *
- * O BLOCO DE CAIXA no topo separa "saiu do caixa" de "no crédito", e essa
- * separacao e a explicacao visual da regra que impede a contagem dupla: compra
- * no credito nao tirou dinheiro de lugar nenhum ainda; quem tira e a fatura.
- *
- * A LINHA DE PONTE existe porque o Resumo e a Carteira contam diferente de
- * proposito: aqui uma geladeira de R$ 1.200 conta R$ 1.200 no mes da compra (foi
- * o que voce comprou), e la ela pesa R$ 100 por mes (e o que sai do caixa). Sem
- * dizer isso em voz alta, a diferenca entre as duas telas pareceria erro.
  */
 
 import { useState } from 'react';
@@ -19,13 +24,22 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { listarCompras } from '../dados/compras';
 import { useFinanceiro } from '../dados/financeiro';
-import { mesesComCompras, resumirMes, type FatiaResumo } from '../lib/resumo';
-import { resumoDoMes } from '../../compartilhado/carteira';
+import { mesesComMovimento, resumirMes, type FatiaResumo } from '../lib/resumo';
+import { resumoDoMes, type MesFinanceiro } from '../../compartilhado/carteira';
+import { estimarGastoCorrente } from '../../compartilhado/previsao';
 import { limitesDo } from '../../compartilhado/planos';
 import { formatarReais } from '../lib/dinheiro';
-import { mesAtual, nomeMes } from '../lib/datas';
+import { formatarData, mesAtual, nomeMes } from '../lib/datas';
 import { pedirDicas, type Dicas } from '../dados/api';
 import { useApp } from '../estado';
+
+/** Quantas categorias aparecem antes do resto virar "outras". */
+const CATEGORIAS_VISIVEIS = 6;
+
+/** "2026-09" -> "setembro". O ano so atrapalha num rotulo de uma linha. */
+function apenasMes(chave: string): string {
+  return nomeMes(chave).replace(/ de \d{4}$/, '');
+}
 
 export function Resumo() {
   const navegar = useNavigate();
@@ -38,7 +52,7 @@ export function Resumo() {
   const [analisando, setAnalisando] = useState(false);
   const [erroDicas, setErroDicas] = useState<string | null>(null);
 
-  if (compras === undefined) {
+  if (compras === undefined || financeiro.carregando) {
     return (
       <div className="app">
         <p className="carregando">Carregando…</p>
@@ -46,11 +60,37 @@ export function Resumo() {
     );
   }
 
+  const agora = Date.now();
   const limites = limitesDo(plano);
-  const meses = mesesComCompras(compras);
-  const mes = mesEscolhido ?? meses[0] ?? mesAtual();
-  const resumo = resumirMes(compras, mes);
-  const caixa = financeiro.mostrar ? resumoDoMes(financeiro.dados, mes, Date.now()) : null;
+  const corrente = mesAtual();
+
+  // O mes corrente entra na lista mesmo sem movimento nenhum: e o mes que a
+  // pessoa abriu a tela para ver, e nao poder chegar nele seria absurdo.
+  const comMovimento = mesesComMovimento(financeiro.dados, agora);
+  const meses = comMovimento.includes(corrente) ? comMovimento : [corrente, ...comMovimento];
+
+  const mes = mesEscolhido !== null && meses.includes(mesEscolhido) ? mesEscolhido : meses[0]!;
+  const indice = meses.indexOf(mes);
+  const ehCorrente = mes === corrente;
+
+  // A media dos meses completos, para comparar com o mes tipico. O `null`
+  // forçado ignora o gasto manual de proposito: aqui a pergunta e "quanto eu
+  // costumo gastar", que e historico, e nao "com quanto eu quero contar".
+  const estimativa = estimarGastoCorrente(financeiro.dados, agora, null);
+  const resumo = resumirMes(compras, mes, {
+    contas: financeiro.dados.contas,
+    tipico: estimativa.mesesUsados > 0 ? estimativa.total : null,
+  });
+
+  const caixa = financeiro.mostrar ? resumoDoMes(financeiro.dados, mes, agora) : null;
+
+  function irPara(novo: number) {
+    const destino = meses[novo];
+    if (destino === undefined) return;
+    setMesEscolhido(destino);
+    setDicas(null);
+    setErroDicas(null);
+  }
 
   async function analisar() {
     setAnalisando(true);
@@ -76,93 +116,135 @@ export function Resumo() {
         </div>
       </header>
 
-      {meses.length > 1 && (
-        <div className="campo">
-          <label className="campo-rotulo" htmlFor="mes">Mês</label>
-          <select
-            id="mes"
-            className="entrada"
-            value={mes}
-            onChange={(e) => {
-              setMesEscolhido(e.target.value);
-              setDicas(null);
-              setErroDicas(null);
-            }}
-          >
-            {meses.map((chave) => (
-              <option key={chave} value={chave}>{nomeMes(chave)}</option>
-            ))}
-          </select>
-        </div>
+      <div className="mes-navegador">
+        <button
+          type="button"
+          className="botao-icone"
+          aria-label="Mês anterior"
+          disabled={indice >= meses.length - 1}
+          onClick={() => irPara(indice + 1)}
+        >
+          ‹
+        </button>
+        <strong>{nomeMes(mes)}</strong>
+        <button
+          type="button"
+          className="botao-icone"
+          aria-label="Mês seguinte"
+          disabled={indice <= 0}
+          onClick={() => irPara(indice - 1)}
+        >
+          ›
+        </button>
+      </div>
+
+      {caixa && (
+        <RazaoDoCaixa caixa={caixa} ehCorrente={ehCorrente} temRenda={financeiro.temRenda} />
       )}
 
+      <h2 className="secao-titulo">O que eu comprei</h2>
       <section className="cartao">
-        <span className="campo-rotulo">{nomeMes(mes)}</span>
-        <div className="total-grande">{formatarReais(resumo.total)}</div>
-        <p className="dica">
-          {resumo.quantidade} compra(s) · média de {formatarReais(resumo.media)}
-        </p>
+        <div className="razao-linha razao-total">
+          <span />
+          <span>Comprei em {apenasMes(mes)}</span>
+          <span className="razao-valor">{formatarReais(resumo.total)}</span>
+        </div>
+
+        {caixa && resumo.total > 0 && (
+          <>
+            {caixa.saidasAVista > 0 && (
+              <Linha filha rotulo="à vista, débito ou Pix" valor={caixa.saidasAVista} />
+            )}
+            {caixa.noCredito > 0 && (
+              <Linha filha rotulo="no crédito" dica="(vira fatura)" valor={caixa.noCredito} />
+            )}
+            {caixa.noVale > 0 && <Linha filha rotulo="no vale" valor={caixa.noVale} />}
+            {caixa.semConta > 0 && (
+              <Linha filha rotulo="sem conta definida" valor={caixa.semConta} />
+            )}
+          </>
+        )}
+
+        {resumo.quantidade > 0 && (
+          <p className="dica">
+            {resumo.quantidade} compra(s) · média de {formatarReais(resumo.media)}
+          </p>
+        )}
+
+        {resumo.maiorCompra !== null && resumo.quantidade > 1 && (
+          <button
+            type="button"
+            className="fatia-abrir dica"
+            onClick={() => navegar('/compra/' + resumo.maiorCompra!.id)}
+          >
+            Maior compra:{' '}
+            {resumo.maiorCompra.descricao || resumo.maiorCompra.categoria || 'sem descrição'} —{' '}
+            <strong>{formatarReais(resumo.maiorCompra.total)}</strong> ›
+          </button>
+        )}
+
+        {resumo.comparadoAoTipico !== null && resumo.tipico !== null && (
+          <p className={'dica ' + (resumo.comparadoAoTipico > 0 ? 'subiu' : 'caiu')}>
+            {resumo.comparadoAoTipico > 0 ? '▲' : '▼'}{' '}
+            {formatarReais(Math.abs(resumo.comparadoAoTipico))}{' '}
+            {resumo.comparadoAoTipico > 0 ? 'acima' : 'abaixo'} do mês típico (
+            {formatarReais(resumo.tipico)}, média de {estimativa.mesesUsados} mês(es), sem contar
+            categorias eventuais)
+          </p>
+        )}
+
         {resumo.variacao !== null && resumo.totalAnterior !== null && (
           <p className={'dica ' + (resumo.variacao > 0 ? 'subiu' : 'caiu')}>
-            {resumo.variacao > 0 ? '▲' : '▼'} {formatarReais(Math.abs(resumo.variacao))} em
-            relação ao mês anterior ({formatarReais(resumo.totalAnterior)})
+            {resumo.variacao > 0 ? '▲' : '▼'} {formatarReais(Math.abs(resumo.variacao))} em relação
+            ao mês anterior ({formatarReais(resumo.totalAnterior)})
+          </p>
+        )}
+
+        {caixa !== null && caixa.noCredito > 0 && (
+          <p className="dica">
+            {caixa.adiadoEmParcelas > 0 ? (
+              <>
+                Dos {formatarReais(caixa.noCredito)} no crédito,{' '}
+                {formatarReais(caixa.adiadoEmParcelas)} viram parcela de meses seguintes — por isso
+                este número e o da Carteira não batem, e nenhum dos dois está errado.
+              </>
+            ) : (
+              <>
+                Os {formatarReais(caixa.noCredito)} no crédito ainda não saíram de conta nenhuma:
+                eles saem quando a fatura é paga.
+              </>
+            )}
           </p>
         )}
       </section>
 
-      {caixa && financeiro.temRenda && (
-        <section className="cartao">
-          <div className="fatia-linha">
-            <span>Entrou</span>
-            <strong>{formatarReais(caixa.entradas)}</strong>
-          </div>
-          <div className="fatia-linha">
-            <span>Saiu do caixa</span>
-            <span>{formatarReais(caixa.saidasAVista + caixa.pagamentos)}</span>
-          </div>
-          <div className="fatia-linha">
-            <span>
-              No crédito <span className="dica">(vira fatura)</span>
-            </span>
-            <span>{formatarReais(caixa.noCredito)}</span>
-          </div>
-          {caixa.noVale > 0 && (
-            <div className="fatia-linha">
-              <span>No vale</span>
-              <span>{formatarReais(caixa.noVale)}</span>
-            </div>
-          )}
-          <div className="fatia-linha" style={{ marginTop: 8 }}>
-            <span>Sobra</span>
-            <strong className={caixa.sobra < 0 ? 'subiu' : 'caiu'}>
-              {formatarReais(caixa.sobra)}
-            </strong>
-          </div>
-
-          {caixa.adiadoEmParcelas > 0 && (
-            <p className="dica" style={{ marginTop: 10 }}>
-              Do total acima, {formatarReais(caixa.adiadoEmParcelas)} viram parcela de meses
-              seguintes — por isso este número e o da Carteira não batem, e nenhum dos dois está
-              errado.
-            </p>
-          )}
-        </section>
-      )}
-
       {resumo.quantidade === 0 && <p className="vazio">Nenhuma compra neste mês.</p>}
 
       {resumo.porCategoria.length > 0 && (
-        <>
-          <h2 className="secao-titulo">Por categoria</h2>
-          <div className="cartao">{resumo.porCategoria.map(fatia)}</div>
-        </>
+        <Fatias
+          titulo="Por categoria"
+          legenda="do total comprado, comparado ao mês anterior"
+          fatias={resumo.porCategoria}
+          abrir={(id) => navegar('/compra/' + id)}
+        />
       )}
 
-      {resumo.porFormaPagamento.length > 0 && (
-        <>
-          <h2 className="secao-titulo">Por forma de pagamento</h2>
-          <div className="cartao">{resumo.porFormaPagamento.map(fatia)}</div>
-        </>
+      {resumo.porConta.length > 0 && (
+        <Fatias
+          titulo="Por conta"
+          legenda="de onde cada compra saiu, ou vai sair"
+          fatias={resumo.porConta}
+          abrir={(id) => navegar('/compra/' + id)}
+        />
+      )}
+
+      {resumo.porConta.length === 0 && resumo.porFormaPagamento.length > 0 && (
+        <Fatias
+          titulo="Por forma de pagamento"
+          legenda="o texto digitado na compra, não a conta"
+          fatias={resumo.porFormaPagamento}
+          abrir={(id) => navegar('/compra/' + id)}
+        />
       )}
 
       <h2 className="secao-titulo">Dicas de economia</h2>
@@ -184,7 +266,7 @@ export function Resumo() {
             disabled={analisando || resumo.quantidade === 0 || offline}
             onClick={analisar}
           >
-            {analisando ? 'Analisando o mês…' : 'Analisar ' + nomeMes(mes)}
+            {analisando ? 'Analisando o mês…' : 'Analisar ' + apenasMes(mes)}
           </button>
           {offline && <p className="dica">Precisa de internet para analisar.</p>}
         </>
@@ -196,8 +278,8 @@ export function Resumo() {
         <div style={{ marginTop: 12 }}>
           <div className="cartao">{dicas.resumo}</div>
 
-          {dicas.achados.map((achado, indice) => (
-            <div className="cartao" key={indice}>
+          {dicas.achados.map((achado, indiceAchado) => (
+            <div className="cartao" key={indiceAchado}>
               <strong>{achado.titulo}</strong>
               <p className="dica" style={{ color: 'var(--texto)' }}>{achado.detalhe}</p>
               {achado.economiaEstimadaCentavos !== null && achado.economiaEstimadaCentavos > 0 && (
@@ -226,8 +308,8 @@ export function Resumo() {
             <div className="cartao">
               <strong>O que fazer</strong>
               <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-                {dicas.sugestoes.map((sugestao, indice) => (
-                  <li key={indice}>{sugestao}</li>
+                {dicas.sugestoes.map((sugestao, indiceSugestao) => (
+                  <li key={indiceSugestao}>{sugestao}</li>
                 ))}
               </ul>
             </div>
@@ -239,20 +321,224 @@ export function Resumo() {
 }
 
 /**
+ * O fechamento de caixa, como subtracao conferivel.
+ *
+ * Cada linha e guardada pelo SEU dado, e nao o cartao inteiro por `temRenda`.
+ * Antes o bloco todo exigia renda cadastrada, e quem tinha contas e cartoes sem
+ * renda nao via nem "saiu do caixa" — mas o Princípio 0 diz que numero vem de
+ * DADO, e o dado de "saiu do caixa" e compra mais conta, que existiam.
+ *
+ * `aVencer` fica FORA da subtracao, embaixo da regua: ele e o que vence e ainda
+ * nao foi pago, ou seja, dinheiro que continua na conta. Some-lo a sobra era o
+ * bug que fazia o mes passado de quem registra pagamento parcial parecer PIOR
+ * que o de quem nunca registrou nada.
+ */
+function RazaoDoCaixa({
+  caixa,
+  ehCorrente,
+  temRenda,
+}: {
+  caixa: MesFinanceiro;
+  ehCorrente: boolean;
+  temRenda: boolean;
+}) {
+  const temSaida = caixa.saidasAVista > 0 || caixa.pagamentos > 0 || caixa.descontoEmFolha > 0;
+  if (!temRenda && !temSaida) return null;
+
+  return (
+    <>
+      <h2 className="secao-titulo">O que saiu do meu dinheiro</h2>
+      <section className="cartao">
+        {temRenda && <Linha rotulo="Entrou" valor={caixa.entradas} />}
+        {caixa.saidasAVista > 0 && (
+          <Linha sinal="−" rotulo="Compras à vista, débito ou Pix" valor={caixa.saidasAVista} />
+        )}
+        {caixa.pagamentos > 0 && (
+          <Linha sinal="−" rotulo="Faturas e parcelas pagas" valor={caixa.pagamentos} />
+        )}
+        {caixa.descontoEmFolha > 0 && (
+          <Linha sinal="−" rotulo="Descontado em folha" valor={caixa.descontoEmFolha} />
+        )}
+
+        {temRenda && (
+          <>
+            <hr className="razao-regua" />
+            <div className="razao-linha razao-total">
+              <span>=</span>
+              <span>{ehCorrente ? 'Sobra até agora' : 'Sobrou em ' + apenasMes(caixa.mes)}</span>
+              <span className={'razao-valor ' + (caixa.sobra < 0 ? 'valor-ruim' : 'valor-bom')}>
+                {formatarReais(caixa.sobra)}
+              </span>
+            </div>
+          </>
+        )}
+
+        {caixa.aVencer > 0 && (
+          <>
+            <hr className="razao-regua" />
+            <Linha
+              rotulo={ehCorrente ? 'Ainda vence neste mês' : 'Ficou em aberto'}
+              valor={caixa.aVencer}
+            />
+            <p className="dica">
+              {ehCorrente
+                ? 'Esse dinheiro ainda está na conta, então não entra na subtração acima.'
+                : 'Não foi pago, então não saiu da conta — fica fora da subtração acima.'}
+            </p>
+          </>
+        )}
+
+        {caixa.presumido && (
+          <p className="dica">
+            Competências vencidas sem pagamento registrado contam como pagas por presunção. Se
+            algo ficou no rotativo, registre o pagamento real para o número refletir isso.
+          </p>
+        )}
+
+        {caixa.noCredito > 0 && (
+          <p className="dica">
+            Os {formatarReais(caixa.noCredito)} comprados no crédito não aparecem aqui de
+            propósito: no mês da compra eles não saíram de conta nenhuma.
+          </p>
+        )}
+      </section>
+    </>
+  );
+}
+
+/** Uma linha do razao. O sinal em coluna propria faz a subtracao ser legivel. */
+function Linha({
+  sinal,
+  rotulo,
+  dica,
+  valor,
+  filha,
+}: {
+  sinal?: string;
+  rotulo: string;
+  dica?: string;
+  valor: number;
+  filha?: boolean;
+}) {
+  return (
+    <div className={'razao-linha' + (filha ? ' razao-linha-filha' : '')}>
+      <span className="razao-sinal">{sinal ?? ''}</span>
+      <span>
+        {rotulo}
+        {dica !== undefined && <span className="dica"> {dica}</span>}
+      </span>
+      <span className="razao-valor">{formatarReais(valor)}</span>
+    </div>
+  );
+}
+
+/**
+ * Uma secao de fatias, com teto e com as compras por tras de cada numero.
+ *
+ * O teto existe porque sao 17 categorias possiveis: renderizar todas virava uma
+ * parede de barras em que nao se achava nada. E a expansao existe porque resumo
+ * em que nao se pode entrar e resumo que se para de conferir — o numero afirmava
+ * "Mercado R$ 800" e nao havia caminho nenhum ate as compras que somavam isso.
+ */
+function Fatias({
+  titulo,
+  legenda,
+  fatias,
+  abrir,
+}: {
+  titulo: string;
+  legenda: string;
+  fatias: readonly FatiaResumo[];
+  abrir: (id: string) => void;
+}) {
+  const [tudo, setTudo] = useState(false);
+  const [aberta, setAberta] = useState<string | null>(null);
+
+  const visiveis = tudo ? fatias : fatias.slice(0, CATEGORIAS_VISIVEIS);
+  const restantes = fatias.length - visiveis.length;
+
+  return (
+    <>
+      <h2 className="secao-titulo">{titulo}</h2>
+      <div className="cartao">
+        <p className="dica" style={{ marginTop: 0 }}>{legenda}</p>
+
+        {visiveis.map((fatia) => (
+          <div className="fatia" key={fatia.nome}>
+            <button
+              type="button"
+              className="fatia-abrir"
+              aria-expanded={aberta === fatia.nome}
+              onClick={() => setAberta(aberta === fatia.nome ? null : fatia.nome)}
+            >
+              <div className="fatia-linha">
+                <span>
+                  {fatia.nome}
+                  {fatia.delta !== null && fatia.delta !== 0 && (
+                    <span className={'fatia-delta ' + (fatia.delta > 0 ? 'subiu' : 'caiu')}>
+                      {fatia.delta > 0 ? '▲' : '▼'} {formatarReais(Math.abs(fatia.delta))}
+                    </span>
+                  )}
+                </span>
+                <span>
+                  {formatarReais(fatia.total)} · {fatia.percentual.toFixed(0)}%
+                </span>
+              </div>
+              <div className="barra">
+                <div className="barra-preenchida" style={{ width: fatia.percentual + '%' }} />
+              </div>
+            </button>
+
+            {aberta === fatia.nome && (
+              <ul className="lista fatia-compras">
+                {fatia.compras
+                  .slice()
+                  .sort((a, b) => b.total - a.total)
+                  .map((compra) => (
+                    <li key={compra.id}>
+                      <button type="button" className="compra" onClick={() => abrir(compra.id)}>
+                        <div className="compra-corpo">
+                          <div className="compra-titulo">
+                            {compra.descricao || compra.categoria || 'sem descrição'}
+                          </div>
+                          <div className="compra-meta">{formatarData(compra.data)}</div>
+                        </div>
+                        <span className="compra-valor">{formatarReais(compra.total)}</span>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+        ))}
+
+        {restantes > 0 && (
+          <button type="button" className="botao botao-largo" onClick={() => setTudo(true)}>
+            Ver outras {restantes}
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+/**
  * O exemplo estatico da analise, para o plano gratis.
  *
  * E texto fixo: NAO chama a API. Custa zero e mostra melhor o que o plano pago
  * entrega do que uma amostra que expira — e, num projeto que roda em free tier
  * permanente, esse custo zero e o que torna o exemplo possivel.
+ *
+ * Fica RECOLHIDO porque sao dois cartoes de exemplo competindo por altura de
+ * tela com o dado real de quem ja esta ali para conferir o proprio mes.
  */
 function ExemploDeAnalise() {
   return (
-    <>
-      <p className="dica">
+    <details>
+      <summary className="dica">
         <span className="selo selo-plano">plano pago</span> A análise lê o mês inteiro com os
-        itens, compara com o anterior e olha os próximos doze meses. Um exemplo do que ela
-        devolve:
-      </p>
+        itens, compara com o anterior e olha os próximos doze meses. Ver um exemplo.
+      </summary>
       <div className="cartao cartao-exemplo">
         <strong>Arroz subiu 20% em dois meses</strong>
         <p className="dica" style={{ color: 'var(--texto)' }}>
@@ -269,22 +555,6 @@ function ExemploDeAnalise() {
           da geladeira.
         </p>
       </div>
-    </>
-  );
-}
-
-function fatia(item: FatiaResumo) {
-  return (
-    <div className="fatia" key={item.nome}>
-      <div className="fatia-linha">
-        <span>{item.nome}</span>
-        <span>
-          {formatarReais(item.total)} · {item.percentual.toFixed(0)}%
-        </span>
-      </div>
-      <div className="barra">
-        <div className="barra-preenchida" style={{ width: item.percentual + '%' }} />
-      </div>
-    </div>
+    </details>
   );
 }

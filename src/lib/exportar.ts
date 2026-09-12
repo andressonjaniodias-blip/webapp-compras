@@ -40,7 +40,7 @@ import { intervaloDoMes } from '../../compartilhado/fatura';
 import { parcelasDaCompra, parcelasDaDivida, vezesDa } from '../../compartilhado/parcelamento';
 import { competenciaDaCompra } from '../../compartilhado/parcelamento';
 import { projetar } from '../../compartilhado/previsao';
-import { mesesComCompras } from './resumo';
+import { mesesComMovimento } from './resumo';
 import { formatarData } from './datas';
 
 const FORMATO_MOEDA = '#,##0.00';
@@ -312,12 +312,25 @@ export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void>
     ...tudo.regras.map((r): Celula[] => [texto(r.termo), texto(r.categoria)]),
   ];
 
+  /*
+   * A aba de fechamento de caixa, mes a mes.
+   *
+   * "Sobrou no mes" NAO se chama "Sobra", e isto e de proposito: a aba `Previsão`
+   * tem uma coluna "Sobra prevista" que e outra conta (projecao contra media de
+   * gasto), e as duas abas ficam lado a lado na mesma planilha. Dois numeros
+   * diferentes com nomes quase iguais, abertos ao mesmo tempo, e o jeito mais
+   * rapido de fazer alguem desconfiar dos dois.
+   *
+   * `A vencer` fica DEPOIS de `Sobrou no mes` porque nao entra na subtracao —
+   * ver o comentario de `resumoDoMes`.
+   */
   const abaResumo: Celula[][] = [
     cabecalho([
-      'Mês', 'Entradas', 'Saiu do caixa', 'No crédito', 'No vale', 'Pago em faturas',
-      'A vencer', 'Sobra', 'Adiado em parcelas',
+      'Mês', 'Entradas', 'Comprei no mês', 'Compras à vista', 'No crédito', 'No vale',
+      'Sem conta', 'Pago em faturas', 'Descontado em folha', 'Sobrou no mês', 'A vencer',
+      'Presumido', 'Adiado em parcelas',
     ]),
-    ...mesesComCompras(tudo.compras)
+    ...mesesComMovimento(tudo, agora)
       .slice()
       .reverse()
       .map((mes): Celula[] => {
@@ -326,12 +339,16 @@ export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void>
         return [
           { value: new Date(inicio), type: Date, format: 'mm/yyyy' },
           dinheiro(m.entradas),
+          dinheiro(m.comprado),
           dinheiro(m.saidasAVista),
           dinheiro(m.noCredito),
           dinheiro(m.noVale),
+          dinheiro(m.semConta),
           dinheiro(m.pagamentos),
-          dinheiro(m.aVencer),
+          dinheiro(m.descontoEmFolha),
           dinheiro(m.sobra),
+          dinheiro(m.aVencer),
+          texto(m.presumido ? 'sim' : ''),
           dinheiro(m.adiadoEmParcelas),
         ];
       }),

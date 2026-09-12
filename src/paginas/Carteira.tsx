@@ -19,6 +19,7 @@ import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { TabelaPrevisao } from '../componentes/TabelaPrevisao';
 import { limitesDo } from '../../compartilhado/planos';
 import { mesesAteAMetaMaisLonga, panorama } from '../../compartilhado/previsao';
+import { resumoDoMes } from '../../compartilhado/carteira';
 import { chaveDoMes } from '../../compartilhado/fatura';
 import { podeEnviar, podeReceber } from '../../compartilhado/tipos';
 import { gravarGastoManual } from '../dados/financas';
@@ -61,6 +62,7 @@ export function Carteira() {
   const visao = panorama(dados, { meses, agora, gastoManual });
   const { carteira, estimativa, linhas, mesMaisApertado } = visao;
   const mesAtual = chaveDoMes(agora);
+  const mesCorrente = resumoDoMes(dados, mesAtual, agora);
 
   const daParaTransferir = dados.contas
     .filter(podeEnviar)
@@ -109,12 +111,49 @@ export function Carteira() {
       <section className="cartao">
         <span className="campo-rotulo">Saldo em conta</span>
         <div className="total-grande">{formatarReais(carteira.saldoEmConta)}</div>
-        {carteira.aPagar > 0 && (
-          <p className={'dica ' + (carteira.sobraProjetada < 0 ? 'subiu' : '')}>
-            {formatarReais(carteira.aPagar)} a pagar · sobram{' '}
-            {formatarReais(carteira.sobraProjetada)}
-            {carteira.terminaEm && ` · último compromisso em ${nomeMes(carteira.terminaEm)}`}
+
+        {/*
+          O QUE VENCE NESTE MES VEM PRIMEIRO, e o total depois.
+          `aPagar` e a soma de TODA parcela futura, de todos os meses. Com um
+          financiamento longo ele produzia "R$ 1.500 em conta · R$ 42.000 a pagar
+          · sobram -R$ 40.500": verdadeiro, alarmante e inacionavel, porque
+          ninguem precisa pagar 42 mil hoje. O numero que muda decisao esta
+          embaixo.
+        */}
+        {mesCorrente.aVencer > 0 && (
+          <p className="dica">
+            <strong>{formatarReais(mesCorrente.aVencer)}</strong> vencem ainda este mês — é o que
+            precisa sair da conta agora.
           </p>
+        )}
+
+        {carteira.aPagar > 0 && (
+          <p className={'dica ' + (carteira.sobraProjetada < 0 ? 'valor-ruim' : '')}>
+            {formatarReais(carteira.aPagar)} a pagar no total
+            {carteira.terminaEm && `, até ${nomeMes(carteira.terminaEm)}`} · se pagar tudo que
+            deve, ficam {formatarReais(carteira.sobraProjetada)}
+          </p>
+        )}
+
+        {/*
+          A ponte para o Resumo. Sem ela a tela ia de "saldo hoje" direto para
+          "proximos meses", pulando "como este mes esta indo" — e as duas telas
+          pareciam desconexas, cada uma com um numero chamado sobra.
+        */}
+        {temRenda && (
+          <button
+            type="button"
+            className="fatia-abrir dica"
+            onClick={() => navegar('/resumo')}
+          >
+            Este mês: entraram {formatarReais(mesCorrente.entradas)}, saíram{' '}
+            {formatarReais(mesCorrente.saidasAVista + mesCorrente.pagamentos + mesCorrente.descontoEmFolha)}
+            , sobra até agora{' '}
+            <strong className={mesCorrente.sobra < 0 ? 'valor-ruim' : 'valor-bom'}>
+              {formatarReais(mesCorrente.sobra)}
+            </strong>{' '}
+            ›
+          </button>
         )}
         {carteira.saldoEmVales > 0 && (
           <p className="dica">{formatarReais(carteira.saldoEmVales)} em vale</p>

@@ -198,13 +198,22 @@ function blocoDoCaixa(dados: DadosFinanceiros, mes: string, agora: number): stri
   return [
     'SALDO E ENTRADAS',
     `  entrou no mês: R$ ${reais(fechamento.entradas)}`,
+    `  comprado no mês, somando tudo: R$ ${reais(fechamento.comprado)}`,
     `  saiu do caixa no mês (débito/pix/dinheiro): R$ ${reais(fechamento.saidasAVista)}`,
     `  comprado no crédito no mês (vira fatura, NÃO saiu ainda): R$ ${reais(fechamento.noCredito)}`,
     `  destes, viram parcela de meses seguintes: R$ ${reais(fechamento.adiadoEmParcelas)}`,
     `  gasto no vale: R$ ${reais(fechamento.noVale)}`,
+    `  comprado sem conta definida: R$ ${reais(fechamento.semConta)}`,
     `  faturas e parcelas pagas no mês: R$ ${reais(fechamento.pagamentos)}`,
-    `  ainda a vencer no mês: R$ ${reais(fechamento.aVencer)}`,
-    `  sobra do mês: R$ ${reais(fechamento.sobra)}`,
+    `  descontado em folha no mês: R$ ${reais(fechamento.descontoEmFolha)}`,
+    // A sobra e SO CAIXA: entradas menos o que de fato saiu. O `aVencer` vem
+    // depois e de proposito FORA dela, senao a IA repetiria a conta errada que a
+    // tela fazia — ver o comentario de `resumoDoMes`.
+    `  sobrou no mês (entradas menos o que saiu): R$ ${reais(fechamento.sobra)}`,
+    `  vence no mês e ainda NÃO foi pago (não entra na sobra): R$ ${reais(fechamento.aVencer)}`,
+    fechamento.presumido
+      ? '  ATENÇÃO: alguma competência vencida deste mês foi contada como paga por presunção, sem pagamento registrado.'
+      : '',
     '  saldo por conta hoje:',
     contas || '  (nenhuma conta cadastrada)',
     `  total em conta: R$ ${reais(carteira.saldoEmConta)} | em vales: R$ ${reais(carteira.saldoEmVales)}`,

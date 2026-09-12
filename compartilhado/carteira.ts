@@ -17,6 +17,19 @@
  * compras do mes E o pagamento da fatura contaria o mesmo dinheiro duas vezes —
  * e o sintoma seria um saldo errado descoberto semanas depois, sem pista.
  *
+ * OS QUATRO SENTIDOS DE "SOBRA", e por que cada tela usa um rotulo diferente:
+ *
+ * | numero                                      | pergunta que responde        | rotulo na tela           |
+ * | `Carteira.sobraProjetada`                   | e se eu pagar tudo que devo? | "se pagar tudo que deve" |
+ * | `LinhaPrevisao.sobra` do mes parcial        | quanto ainda sobra este mes? | "ainda sobra este mes"   |
+ * | `MesFinanceiro.sobra`                       | quanto sobrou de fato?       | "sobrou em {mes}"        |
+ * | `LinhaPrevisao.sobra` dos meses cheios      | quanto deve sobrar?          | "sobra prevista"         |
+ *
+ * Os quatro estao certos e sao diferentes. Chamar todos de "sobra" na tela fazia
+ * o app parecer que se contradizia: a tela inicial dizia 900 e o Resumo dizia
+ * 400 para o mesmo mes, ambos corretos, nenhum dizendo qual pergunta respondia.
+ * Ao mexer em qualquer um destes, mexa no rotulo tambem.
+ *
  * Sobre o SALDO INICIAL: o saldo de uma conta nao da para deduzir do historico
  * de compras, porque falta o dinheiro que ja estava la. O usuario informa uma
  * vez, e daqui para frente so conta o que veio depois. Informar de novo faz
@@ -209,12 +222,51 @@ export function presumidoAteDaDivida(
 }
 
 /**
- * Quanto de desconto em folha ja saiu desta conta no periodo.
+ * Quanto de desconto em folha DESTA divida saiu entre `desde` e `ate`.
  *
  * A renda cadastrada e o BRUTO, sem o desconto do emprestimo, entao o consignado
  * precisa sair da conta para o saldo bater com o extrato. Sem isto o saldo sobe
  * o valor da parcela todo mes, em silencio.
+ *
+ * O periodo e parametro, e nao `agora` fixo, porque duas perguntas diferentes
+ * usam esta mesma conta: o SALDO quer tudo desde o saldo de partida ate hoje, e o
+ * FECHAMENTO DO MES quer so o que saiu dentro daquele mes. Antes existia apenas a
+ * versao do saldo, e o efeito era o consignado sumir do resumo mensal: a sobra
+ * saia maior do que foi, porque `entradas` e o salario bruto.
  */
+function descontosEmFolhaDa(
+  divida: Divida,
+  dados: DadosFinanceiros,
+  desde: number,
+  ate: number,
+  agora: number,
+): number {
+  if (!divida.descontoEmFolha) return 0;
+
+  const limite = presumidoAteDaDivida(divida, dados, agora);
+  const pagoPorCompetencia = new Map<string, number>();
+  for (const pagamento of pagamentosDe(dados.transferencias, 'divida', divida.id)) {
+    pagoPorCompetencia.set(
+      pagamento.competencia,
+      (pagoPorCompetencia.get(pagamento.competencia) ?? 0) + pagamento.valor,
+    );
+  }
+
+  let total = 0;
+  for (const parcela of parcelasDaDivida(divida)) {
+    if (parcela.competencia > limite) continue;
+    // Pagamento registrado ja sai pela transferencia. Presumir de novo aqui
+    // tiraria o mesmo dinheiro duas vezes.
+    if ((pagoPorCompetencia.get(parcela.competencia) ?? 0) > 0) continue;
+    const quando = dataDoDescontoEmFolha(divida, dados, parcela.competencia);
+    if (quando < desde || quando > ate) continue;
+    total += parcela.valor;
+  }
+
+  return total;
+}
+
+/** Desconto em folha que saiu desta conta, do saldo de partida ate agora. */
 function descontosEmFolhaDaConta(
   conta: Conta,
   dados: DadosFinanceiros,
@@ -222,31 +274,32 @@ function descontosEmFolhaDaConta(
   agora: number,
 ): number {
   let total = 0;
-
   for (const divida of dados.dividas) {
-    if (!naoExcluido(divida) || !divida.descontoEmFolha) continue;
-    if (divida.contaId !== conta.id) continue;
-
-    const limite = presumidoAteDaDivida(divida, dados, agora);
-    const pagoPorCompetencia = new Map<string, number>();
-    for (const pagamento of pagamentosDe(dados.transferencias, 'divida', divida.id)) {
-      pagoPorCompetencia.set(
-        pagamento.competencia,
-        (pagoPorCompetencia.get(pagamento.competencia) ?? 0) + pagamento.valor,
-      );
-    }
-
-    for (const parcela of parcelasDaDivida(divida)) {
-      if (parcela.competencia > limite) continue;
-      // Pagamento registrado ja sai pela transferencia. Presumir de novo aqui
-      // tiraria o mesmo dinheiro duas vezes.
-      if ((pagoPorCompetencia.get(parcela.competencia) ?? 0) > 0) continue;
-      const quando = dataDoDescontoEmFolha(divida, dados, parcela.competencia);
-      if (quando < desde || quando > agora) continue;
-      total += parcela.valor;
-    }
+    if (!naoExcluido(divida) || divida.contaId !== conta.id) continue;
+    total += descontosEmFolhaDa(divida, dados, desde, agora, agora);
   }
+  return total;
+}
 
+/**
+ * Desconto em folha de todas as dividas, dentro de um periodo.
+ *
+ * Só conta divida que aponta para uma conta existente, pelo mesmo motivo que
+ * `saldoDaConta` casa por id: consignado sem conta definida nao saiu de nenhum
+ * saldo, e subtrai-lo do mes faria o resumo divergir do extrato no sentido
+ * oposto.
+ */
+function descontosEmFolhaNoPeriodo(
+  dados: DadosFinanceiros,
+  desde: number,
+  ate: number,
+  agora: number,
+): number {
+  let total = 0;
+  for (const divida of dados.dividas) {
+    if (!naoExcluido(divida) || !acharConta(dados.contas, divida.contaId)) continue;
+    total += descontosEmFolhaDa(divida, dados, desde, ate, agora);
+  }
   return total;
 }
 
@@ -566,12 +619,24 @@ export interface MesFinanceiro {
   noVale: number;
   /** Faturas e parcelas efetivamente pagas no mes. */
   pagamentos: number;
-  /** O que vence no mes e ainda nao foi pago. */
+  /** Consignado retido na folha no mes. Sai da conta sem virar `Transferencia`. */
+  descontoEmFolha: number;
+  /**
+   * O que vence no mes e ainda nao foi pago.
+   *
+   * FICA FORA DA SOBRA, de proposito — ver o comentario de `resumoDoMes`.
+   */
   aVencer: number;
-  /** entradas - saidasAVista - pagamentos - aVencer. */
+  /** `entradas - saidasAVista - pagamentos - descontoEmFolha`. Só caixa. */
   sobra: number;
   /** Quanto do gasto do mes virou parcela de meses seguintes. */
   adiadoEmParcelas: number;
+  /** Tudo que foi comprado no mes, inclusive compra sem conta definida. */
+  comprado: number;
+  /** Comprado sem conta definida: fica fora das tres linhas de caixa. */
+  semConta: number;
+  /** Alguma competencia deste mes foi liquidada por presuncao, sem pagamento. */
+  presumido: boolean;
 }
 
 /**
@@ -581,6 +646,27 @@ export interface MesFinanceiro {
  * lugar nenhum. Quem sai e o pagamento da fatura, que aparece em `pagamentos`.
  * Somar os dois seria exatamente a contagem dupla que este arquivo existe para
  * impedir.
+ *
+ * `aVencer` TAMBEM fica fora da sobra, e isto corrige um bug real.
+ *
+ * `aVencer` e regime de COMPETENCIA (o que vence no mes) e `pagamentos` e regime
+ * de CAIXA (o que saiu da conta). Subtrair os dois juntos so fecha quando o
+ * restante e zero — e `restante` e zerado pela presuncao, que por sua vez e
+ * cancelada por qualquer pagamento registrado (ver `porCompetencia`). O
+ * resultado eram tres meses de agosto identicos com sobras diferentes, numa
+ * fatura de R$ 100:
+ *
+ *   pagou os 100  -> pagamentos 100, aVencer  0  -> subtraia 100  certo
+ *   pagou 40      -> pagamentos  40, aVencer 60  -> subtraia 100  ERRADO, 60 nao sairam
+ *   nao registrou -> pagamentos   0, aVencer  0  -> subtraia   0  ERRADO, presumido
+ *
+ * Ou seja: quanto MENOS o usuario contava ao app, melhor o mes passado parecia, e
+ * quem registrava pagamento parcial era punido com sobra menor. Hoje a sobra e so
+ * caixa, e `aVencer` e uma linha propria na tela — visivel em vez de embutida.
+ *
+ * O DESCONTO EM FOLHA entra na sobra porque ele sai da conta de verdade, sem
+ * virar `Transferencia`: `entradas` e o salario BRUTO (invariante 17), entao sem
+ * subtrair o consignado a sobra do mes saia inflada todo mes, em silencio.
  */
 export function resumoDoMes(dados: DadosFinanceiros, mes: string, agora: number): MesFinanceiro {
   const { inicio, fim } = intervaloDoMes(mes);
@@ -592,11 +678,17 @@ export function resumoDoMes(dados: DadosFinanceiros, mes: string, agora: number)
   let saidasAVista = 0;
   let noCredito = 0;
   let noVale = 0;
+  let semConta = 0;
   let adiado = 0;
 
   for (const compra of doMes) {
     const conta = acharConta(dados.contas, compra.contaId);
-    if (!conta) continue;
+    // Compra sem conta fica fora das linhas de caixa, mas continua contando no
+    // `comprado`: senao o total da tela nao bateria com a soma das suas partes.
+    if (!conta) {
+      semConta += compra.total;
+      continue;
+    }
     if (conta.tipo === 'credito') {
       noCredito += compra.total;
       const parcelas = parcelasDaCompra(compra, conta);
@@ -612,16 +704,21 @@ export function resumoDoMes(dados: DadosFinanceiros, mes: string, agora: number)
     .filter((t) => naoExcluido(t) && t.alvo !== 'conta' && t.data >= inicio && t.data <= fim)
     .reduce((soma, t) => soma + t.valor, 0);
 
-  const aVencer = todasAsFaturas(dados, agora)
-    .filter((f) => f.competencia === mes)
-    .reduce((soma, f) => soma + f.restante, 0)
-    + compromissos(dados, agora)
+  const ciclosDoMes = [
+    ...todasAsFaturas(dados, agora).filter((f) => f.competencia === mes),
+    ...compromissos(dados, agora)
       .filter((c) => c.origem === 'divida')
       .flatMap((c) => c.ciclos)
-      .filter((ciclo) => ciclo.competencia === mes)
-      .reduce((soma, ciclo) => soma + ciclo.restante, 0);
+      .filter((ciclo) => ciclo.competencia === mes),
+  ];
+
+  const aVencer = ciclosDoMes.reduce((soma, ciclo) => soma + ciclo.restante, 0);
+  const presumido = ciclosDoMes.some((ciclo) => ciclo.presumido);
 
   const entradas = entradasEntre(dados.rendas, inicio, fim);
+  // O teto e o menor entre o fim do mes e agora: consignado que ainda vai ser
+  // retido neste mes nao saiu da conta ainda.
+  const descontoEmFolha = descontosEmFolhaNoPeriodo(dados, inicio, Math.min(fim, agora), agora);
 
   return {
     mes,
@@ -630,9 +727,13 @@ export function resumoDoMes(dados: DadosFinanceiros, mes: string, agora: number)
     noCredito,
     noVale,
     pagamentos,
+    descontoEmFolha,
     aVencer,
-    sobra: entradas - saidasAVista - pagamentos - aVencer,
+    sobra: entradas - saidasAVista - pagamentos - descontoEmFolha,
     adiadoEmParcelas: adiado,
+    comprado: saidasAVista + noCredito + noVale + semConta,
+    semConta,
+    presumido,
   };
 }
 

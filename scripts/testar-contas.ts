@@ -55,6 +55,14 @@ import {
 } from '../compartilhado/categorizacao';
 import { casaTermo, fatorDeRecencia, ordenarSugestoes } from '../compartilhado/sugestoes';
 import { motivoParaNaoTransferir } from '../compartilhado/tipos';
+import {
+  deInputData,
+  formatarData,
+  formatarDataCurta,
+  formatarDataHora,
+  nomeMes,
+  paraInputData,
+} from '../src/lib/datas';
 import type {
   Compra,
   Conta,
@@ -1141,8 +1149,188 @@ console.log('\n15. As sugestoes de item');
   igual('quem começa com o termo vem antes', comecaCom[0]!.chave, 'ninho leite');
 }
 
-console.log('');
-if (falhas > 0) {
+// ============================================== 16. datas sempre em pt-BR
+
+/*
+ * Duas coisas que ja quebraram de verdade e nao davam erro nenhum:
+ *
+ * - `Intl.DateTimeFormat('pt-BR')` cai na locale do SISTEMA quando o runtime
+ *   nao tem os dados de pt-BR, e a mesma data vira 09/01/2026 num aparelho e
+ *   01/09/2026 no outro. Por isso a data e montada a mao, e por isso isto e
+ *   testado: o teste roda no Node, que e outro runtime, e tem que dar igual.
+ * - `deInputData` teve as barras invertidas perdidas na edicao
+ *   (`(d{4})` em vez de `(\\d{4})`), entao NUNCA casava e o campo de data da
+ *   conta engolia em silencio tudo que era digitado.
+ */
+console.log('\n16. Datas sempre em pt-BR, sem depender do sistema');
+{
+  const quando = new Date(2026, 8, 1, 14, 30).getTime();
+
+  igual('data em dd/mm/aaaa', formatarData(quando), '01/09/2026');
+  igual('data curta em dd/mm', formatarDataCurta(quando), '01/09');
+  igual('data com hora', formatarDataHora(quando), '01/09/2026 às 14:30');
+  igual('mes por extenso em portugues', nomeMes('2026-09'), 'setembro de 2026');
+  igual('dezembro tambem', nomeMes('2026-12'), 'dezembro de 2026');
+
+  igual('para o input de data', paraInputData(quando), '2026-09-01');
+  const lido = deInputData('2026-08-19');
+  conferir('o input de data e lido de volta', lido !== null, String(lido));
+  igual('e volta no mesmo dia', lido === null ? '' : formatarData(lido), '19/08/2026');
+  igual('texto fora do formato nao vira data', deInputData('19/08/2026'), null);
+  igual('texto vazio tambem nao', deInputData(''), null);
+}
+
+/*
+ * ================================================== 17. o razao do mes fecha
+ *
+ * A secao existe porque `sobra` e `aVencer` eram os DOIS UNICOS campos de
+ * `MesFinanceiro` sem nenhuma assercao — e era justamente neles que estava o
+ * erro. `sobra` somava `aVencer` (regime de competencia) com `pagamentos`
+ * (regime de caixa), e como a presuncao zera `restante` e qualquer pagamento
+ * registrado cancela a presuncao, o resultado era perverso: quanto MENOS o
+ * usuario contava ao app, melhor o mes passado parecia.
+ *
+ * Os tres agostos abaixo sao identicos menos pelo que foi registrado. O que a
+ * sobra desconta tem de ser o que de fato saiu da conta: 100, 40 e 0.
+ */
+console.log('\n17. O razao do mes fecha');
+{
+  const corrente = conta({ apelido: 'Corrente', tipo: 'corrente' });
+  const cartao = conta({ apelido: 'Cartao', tipo: 'credito', diaFechamento: 20, diaVencimento: 27 });
+  const salario = renda({ contaId: corrente.id, valor: 300000 });
+  const agora = T(2026, 9, 30);
+
+  // Fatura de agosto: compra de R$ 100 no credito, no dia 10.
+  const noCredito = compra({ data: T(2026, 8, 10), total: 10000, contaId: cartao.id });
+  const base = { contas: [corrente, cartao], compras: [noCredito], rendas: [salario] };
+
+  const quitado = resumoDoMes(
+    dados({
+      ...base,
+      transferencias: [
+        transferencia({
+          alvo: 'cartao',
+          alvoId: cartao.id,
+          competencia: '2026-08',
+          data: T(2026, 8, 27),
+          valor: 10000,
+        }),
+      ],
+    }),
+    '2026-08',
+    agora,
+  );
+
+  const parcial = resumoDoMes(
+    dados({
+      ...base,
+      transferencias: [
+        transferencia({
+          alvo: 'cartao',
+          alvoId: cartao.id,
+          competencia: '2026-08',
+          data: T(2026, 8, 27),
+          valor: 4000,
+        }),
+      ],
+    }),
+    '2026-08',
+    agora,
+  );
+
+  const semRegistro = resumoDoMes(dados(base), '2026-08', agora);
+
+  igual('quem pagou os R$ 100 desconta 100 da sobra', quitado.entradas - quitado.sobra, 10000);
+  igual('quem pagou R$ 40 desconta 40, e nao 100', parcial.entradas - parcial.sobra, 4000);
+  igual('quem nao registrou nada desconta 0', semRegistro.entradas - semRegistro.sobra, 0);
+
+  // O que sobrou em aberto continua VISIVEL, so nao entra na subtracao.
+  igual('o pagamento parcial deixa R$ 60 a vencer', parcial.aVencer, 6000);
+  igual('a fatura quitada nao deixa nada a vencer', quitado.aVencer, 0);
+  igual('a presumida tambem nao, porque foi dada por paga', semRegistro.aVencer, 0);
+
+  // E a presuncao e MARCADA, para a tela poder dizer de onde veio o numero.
+  conferir('o mes presumido vem marcado', semRegistro.presumido, String(semRegistro.presumido));
+  conferir('o mes com pagamento parcial NAO e presumido', !parcial.presumido, String(parcial.presumido));
+  conferir('o mes quitado tambem nao', !quitado.presumido, String(quitado.presumido));
+
+  // Pagar mais nunca pode deixar a sobra MAIOR: era esse o sintoma do bug.
+  conferir(
+    'pagar mais desconta mais, sempre',
+    quitado.sobra < parcial.sobra && parcial.sobra < semRegistro.sobra,
+    `quitado ${quitado.sobra}, parcial ${parcial.sobra}, sem registro ${semRegistro.sobra}`,
+  );
+
+  // O desconto em folha sai da conta sem virar Transferencia. Como `entradas` e
+  // o salario BRUTO (invariante 17), sem subtrai-lo a sobra saia inflada todo
+  // mes — e antes desta correcao ele sumia do resumo, porque a presuncao zerava
+  // o `restante` que era o unico caminho dele ate a sobra.
+  const consignado = divida({
+    valorTotal: 1200000,
+    parcelas: 24,
+    primeiraEm: T(2026, 1, 10),
+    descontoEmFolha: true,
+    contaId: corrente.id,
+  });
+  const comFolha = resumoDoMes(
+    dados({ contas: [corrente], rendas: [salario], dividas: [consignado] }),
+    '2026-09',
+    agora,
+  );
+
+  igual('a parcela retida na folha aparece no mes', comFolha.descontoEmFolha, 50000);
+  igual('e sai da sobra', comFolha.sobra, 250000);
+
+  // A IDENTIDADE DO RAZAO. Toda linha que a tela desenha esta aqui; se alguem
+  // acrescentar um termo a `sobra` sem dar linha a ele no Resumo, isto falha.
+  const composto = resumoDoMes(
+    dados({
+      contas: [corrente, cartao],
+      compras: [
+        compra({ data: T(2026, 9, 3), total: 8000, contaId: corrente.id }),
+        compra({ data: T(2026, 9, 4), total: 12000, contaId: cartao.id }),
+        compra({ data: T(2026, 9, 5), total: 3000 }),
+      ],
+      rendas: [salario],
+      dividas: [consignado],
+      transferencias: [
+        transferencia({
+          alvo: 'cartao',
+          alvoId: cartao.id,
+          competencia: '2026-08',
+          data: T(2026, 9, 27),
+          valor: 5000,
+        }),
+      ],
+    }),
+    '2026-09',
+    agora,
+  );
+
+  igual(
+    'sobra = entradas - a vista - pagamentos - desconto em folha',
+    composto.sobra,
+    composto.entradas - composto.saidasAVista - composto.pagamentos - composto.descontoEmFolha,
+  );
+
+  conferir(
+    'o credito NAO entra na sobra',
+    composto.noCredito > 0 && composto.sobra === composto.entradas - composto.saidasAVista
+      - composto.pagamentos - composto.descontoEmFolha,
+    `noCredito ${composto.noCredito}`,
+  );
+
+  igual(
+    'comprado = a vista + credito + vale + sem conta',
+    composto.comprado,
+    composto.saidasAVista + composto.noCredito + composto.noVale + composto.semConta,
+  );
+
+  igual('compra sem conta fica fora do caixa, mas dentro do comprado', composto.semConta, 3000);
+  igual('e o caixa do mes conta so o que saiu de conta', composto.saidasAVista, 8000);
+}
+
+console.log('');if (falhas > 0) {
   console.log(falhas + ' verificacao(oes) falharam.');
   process.exit(1);
 }

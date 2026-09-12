@@ -723,3 +723,99 @@ textarea.entrada {
   border-top: 1px solid var(--borda);
   font-size: 0.82rem !important;
 }
+
+/* --------------------------------------------------- razao do mes (resumo) */
+
+/*
+ * Apelidos semanticos de `.subiu`/`.caiu`.
+ *
+ * Aquelas duas nasceram para dizer se o GASTO subiu ou caiu. Usa-las como
+ * semaforo generico levava a escrever `.caiu` para pintar de verde uma sobra
+ * positiva — le exatamente ao contrario do que significa.
+ */
+.valor-ruim { color: var(--perigo); }
+.valor-bom { color: var(--acento); }
+
+/*
+ * O razao do mes: uma subtracao que o usuario precisa conseguir conferir a olho.
+ *
+ * Por isso os numeros sao tabulares e alinhados a direita, e a regua antes do
+ * total existe de verdade — sem ela as linhas viram lista qualquer e ninguem
+ * tenta somar. O sinal fica em coluna propria, na frente do rotulo, para a
+ * leitura ser "menos isto, menos aquilo" em vez de adivinhacao.
+ */
+.razao-linha {
+  display: grid;
+  grid-template-columns: 1ch 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: 0.92rem;
+}
+
+.razao-valor {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.razao-sinal { color: var(--texto-fraco); }
+
+.razao-regua {
+  border: none;
+  border-top: 1px solid var(--borda);
+  margin: 8px 0 6px;
+}
+
+.razao-total {
+  font-weight: 700;
+  font-size: 1.02rem;
+}
+
+/* A quebra do "o que eu comprei": subordinada ao total, entao atenuada. */
+.razao-linha-filha {
+  color: var(--texto-fraco);
+  font-size: 0.86rem;
+  padding: 2px 0;
+}
+
+/* O navegador de mes: dois toques grandes com o nome no meio. */
+.mes-navegador {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mes-navegador > strong {
+  flex: 1;
+  text-align: center;
+  font-size: 1.02rem;
+}
+
+.mes-navegador .botao-icone:disabled { opacity: 0.3; }
+
+/* A fatia clicavel, que abre as compras que formam o numero. */
+.fatia-abrir {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fatia-delta {
+  font-size: 0.8rem;
+  margin-left: 6px;
+}
+
+.fatia-compras {
+  margin: 6px 0 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--borda);
+}

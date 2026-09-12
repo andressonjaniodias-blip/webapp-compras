@@ -147,9 +147,17 @@ function LinhaDePrevisao({
 
   return (
     <button type="button" className="previsao-linha" onClick={onTocar}>
+      {/*
+        "AINDA sobra", e nao "sobra prevista deste mes".
+        Este numero e o mes PARCIAL: so o que falta entrar menos o que falta
+        sair. O Resumo mostra outro, o fechamento do mes inteiro, e a Carteira um
+        terceiro. Chamar os tres de "sobra" fazia o app parecer que se
+        contradizia — a tabela dos quatro sentidos esta no topo de
+        `compartilhado/carteira.ts`.
+      */}
       <span>
-        sobra prevista deste mês{' '}
-        <strong className={visao.sobraDoMes < 0 ? 'subiu' : ''}>
+        ainda sobra este mês{' '}
+        <strong className={visao.sobraDoMes < 0 ? 'valor-ruim' : ''}>
           {formatarReais(visao.sobraDoMes)}
         </strong>
       </span>
