@@ -106,6 +106,12 @@ Rode as três antes de dar qualquer mudança por concluída.
 
 ## Convenções
 
+- **Data e mês são montados à mão, nunca por `Intl.DateTimeFormat`.** A
+  locale pedida só vale se o runtime tiver os dados dela; faltando, ele cai
+  na do sistema e a mesma data vira 09/01/2026 num aparelho e 01/09/2026 no
+  outro, sem erro para investigar. Ver `src/lib/datas.ts` e a seção 16 de
+  `teste:contas`, que roda no Node justamente por ser outro runtime.
+
 - Identificadores, arquivos e comentários em **português**.
 - Comentário de bloco no topo do arquivo explicando **por que** ele existe, não
   o que faz. Siga o tom de `src/dados/compras.ts` e `compartilhado/tipos.ts`.

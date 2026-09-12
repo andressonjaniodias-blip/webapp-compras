@@ -8,21 +8,44 @@
  * compra da meia-noite para o dia anterior.
  */
 
-const fmtData = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-const fmtDataCurta = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
-const fmtHora = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
-const fmtMesLongo = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' });
+/*
+ * A DATA E MONTADA A MAO, sem `Intl.DateTimeFormat`.
+ *
+ * `Intl.DateTimeFormat('pt-BR', ...)` parece garantir dd/mm/aaaa, mas a locale
+ * pedida so vale se o runtime tiver os dados dela: faltando, ele cai na locale
+ * padrao do sistema — e o mesmo codigo que mostra 01/09/2026 num aparelho mostra
+ * 09/01/2026 no outro, sem erro nenhum para investigar. Foi exatamente o sintoma
+ * relatado ("as datas mudaram para o padrao americano no outro aparelho").
+ *
+ * O app e em portugues por decisao de projeto, entao nao ha o que negociar com a
+ * locale do sistema: dia, mes e ano montados na ordem certa custam tres linhas e
+ * dao o mesmo resultado em qualquer lugar.
+ */
+
+const MESES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+] as const;
+
+const doisDigitos = (n: number) => String(n).padStart(2, '0');
 
 export function formatarData(ms: number): string {
-  return fmtData.format(ms);
+  const d = new Date(ms);
+  return `${doisDigitos(d.getDate())}/${doisDigitos(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
 export function formatarDataCurta(ms: number): string {
-  return fmtDataCurta.format(ms);
+  const d = new Date(ms);
+  return `${doisDigitos(d.getDate())}/${doisDigitos(d.getMonth() + 1)}`;
+}
+
+export function formatarHora(ms: number): string {
+  const d = new Date(ms);
+  return `${doisDigitos(d.getHours())}:${doisDigitos(d.getMinutes())}`;
 }
 
 export function formatarDataHora(ms: number): string {
-  return `${fmtData.format(ms)} às ${fmtHora.format(ms)}`;
+  return `${formatarData(ms)} às ${formatarHora(ms)}`;
 }
 
 /** Timestamp -> "2026-08-19T14:30", que e o formato do input. */
@@ -53,7 +76,7 @@ export function paraInputData(ms: number): string {
  * Brasil. Montar a data por partes evita isso.
  */
 export function deInputData(texto: string): number | null {
-  const partes = /^(d{4})-(d{2})-(d{2})$/.exec(texto);
+  const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto);
   if (!partes) return null;
   const ms = new Date(
     Number(partes[1]),
@@ -69,11 +92,12 @@ export function chaveMes(ms: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-/** "2026-08" -> "agosto de 2026". */
+/** "2026-08" -> "agosto de 2026". Pelo mesmo motivo do topo, sem `Intl`. */
 export function nomeMes(chave: string): string {
   const [ano, mes] = chave.split('-');
-  const d = new Date(Number(ano), Number(mes) - 1, 1);
-  return fmtMesLongo.format(d);
+  const indice = Number(mes) - 1;
+  const nome = MESES[indice] ?? '';
+  return nome ? `${nome} de ${ano}` : String(ano);
 }
 
 /** "2026-08" -> a chave do mes anterior, para comparar um mes com o outro. */
