@@ -268,6 +268,38 @@ input[type='checkbox']:focus-visible {
   }
 }
 
+/*
+ * As abas da tela inicial (Despesas | Receitas). Dois alvos de metade da
+ * largura: no corredor do mercado o polegar acerta sem mirar.
+ */
+.abas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 4px;
+  background: var(--superficie-alta);
+  border-radius: var(--raio);
+}
+
+.aba {
+  min-height: 40px;
+  border: 0;
+  border-radius: calc(var(--raio) - 4px);
+  background: transparent;
+  color: var(--texto-fraco);
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.aba-ativa {
+  background: var(--superficie);
+  color: var(--acento-texto);
+  font-weight: 650;
+  box-shadow: var(--sombra);
+}
+
 /* --------------------------------------------------------------- blocos */
 
 /*
