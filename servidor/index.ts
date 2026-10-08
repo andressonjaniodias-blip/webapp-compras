@@ -19,7 +19,7 @@ import { Hono, type Context } from 'hono';
 import type { EnvioSincronizacao } from '../compartilhado/tipos';
 import { limitesDo, planoValido, type Plano } from '../compartilhado/planos';
 import { banco, comandosDoEsquema, ehBancoLocal, ehEsquemaDesatualizado } from './banco';
-import { analisarMes, IaDesligada, iaLigada, proporRegras } from './dicas';
+import { analisarMes, IaDesligada, iaLigada, modeloDaIa, proporRegras } from './dicas';
 import {
   abrirSessao,
   conferirConfiguracao,
@@ -52,13 +52,21 @@ function planoAtual(): Plano {
 
 app.get('/api/saude', (c) => c.json({ ok: true, acordadoEm: Date.now() }));
 
-app.get('/api/sessao', (c) =>
-  c.json({ autenticado: temSessao(c), iaLigada: iaLigada(), plano: planoAtual() }),
-);
+/**
+ * O que as rotas de sessao devolvem, num lugar so para nao divergirem.
+ *
+ * `modeloIa` vai junto para a tela de Ajustes mostrar qual modelo esta valendo:
+ * ele e trocado no painel do servidor, e sem isso nao ha como conferir a troca.
+ */
+function estadoDaSessao(autenticado: boolean) {
+  return { autenticado, iaLigada: iaLigada(), plano: planoAtual(), modeloIa: modeloDaIa() };
+}
+
+app.get('/api/sessao', (c) => c.json(estadoDaSessao(temSessao(c))));
 
 app.post('/api/sessao', async (c) => {
   if (modoAberto()) {
-    return c.json({ autenticado: true, iaLigada: iaLigada(), plano: planoAtual() });
+    return c.json(estadoDaSessao(true));
   }
 
   const corpo = await c.req.json<{ senha?: string }>().catch(() => ({ senha: '' }));
@@ -72,7 +80,7 @@ app.post('/api/sessao', async (c) => {
   }
 
   abrirSessao(c);
-  return c.json({ autenticado: true, iaLigada: iaLigada(), plano: planoAtual() });
+  return c.json(estadoDaSessao(true));
 });
 
 app.delete('/api/sessao', (c) => {
@@ -195,7 +203,9 @@ async function subir(): Promise<void> {
   serve({ fetch: app.fetch, port: porta });
   console.log(`Servidor ouvindo em http://localhost:${porta}`);
   console.log(`Plano: ${planoAtual()} (variavel PLANO; sem cobrança implementada)`);
-  console.log(`Dicas de IA: ${iaLigada() ? 'ligadas' : 'desligadas (sem ANTHROPIC_API_KEY)'}`);
+  console.log(
+    `Dicas de IA: ${iaLigada() ? `ligadas, modelo ${modeloDaIa()} (variavel MODELO_IA)` : 'desligadas (sem ANTHROPIC_API_KEY)'}`,
+  );
 }
 
 subir().catch((falha: unknown) => {

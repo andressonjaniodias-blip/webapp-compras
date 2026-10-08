@@ -39,6 +39,7 @@ import {
   planejarMeta,
   projetar,
 } from '../compartilhado/previsao';
+import { modeloValido, type ModeloDeIa } from '../compartilhado/modelos';
 import { normalizarNome, type Compra, type Item } from '../compartilhado/tipos';
 import { dadosParaAnalise } from './sincronizacao';
 
@@ -51,6 +52,17 @@ export class IaDesligada extends Error {
 
 export function iaLigada(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+}
+
+/**
+ * O modelo das duas rotas, lido a cada chamada.
+ *
+ * Vem de `MODELO_IA` para a troca ser feita no painel do servidor, sem publicar
+ * codigo. A lista do que e aceito, e o motivo de ela ser fechada, estao em
+ * `compartilhado/modelos.ts`.
+ */
+export function modeloDaIa(): ModeloDeIa {
+  return modeloValido(process.env.MODELO_IA?.trim());
 }
 
 function cliente(): Anthropic {
@@ -331,12 +343,12 @@ export async function analisarMes(mes: string): Promise<ResultadoDicas> {
   ].join('\n');
 
   const resposta = await anthropic.messages.parse({
-    model: 'claude-opus-5',
+    model: modeloDaIa(),
     max_tokens: 16000,
     system: INSTRUCOES,
-    // O pensamento adaptativo ja e o padrao deste modelo. `effort: medium`
-    // porque a analise e recorrente e barata: gastar mais raciocinio aqui
-    // encareceria sem melhorar uma leitura de lista de compras.
+    // O pensamento adaptativo ja e o padrao dos modelos aceitos. `effort:
+    // medium` porque a analise e recorrente e barata: gastar mais raciocinio
+    // aqui encareceria sem melhorar uma leitura de lista de compras.
     output_config: {
       effort: 'medium',
       format: zodOutputFormat(EsquemaDicas),
@@ -434,7 +446,7 @@ export async function proporRegras(): Promise<RegraProposta[]> {
   const { CATEGORIAS } = await import('../compartilhado/constantes');
 
   const resposta = await anthropic.messages.parse({
-    model: 'claude-opus-5',
+    model: modeloDaIa(),
     max_tokens: 16000,
     system: INSTRUCOES_REGRAS,
     output_config: {

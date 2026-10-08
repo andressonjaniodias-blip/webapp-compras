@@ -35,3 +35,12 @@ services:
       # Opcional: sem ela o app funciona e so as dicas ficam desligadas.
       - key: ANTHROPIC_API_KEY
         sync: false
+      # `pago` libera a IA e os limites do plano. Qualquer outro valor, ou
+      # nenhum, e o gratis. As dicas precisam das DUAS: a chave e o plano.
+      - key: PLANO
+        sync: false
+      # Opcional: qual modelo faz as analises. Sem ela vale claude-haiku-5-5, o
+      # mais barato. A lista aceita esta em compartilhado/modelos.ts; trocar
+      # aqui nao pede novo deploy de codigo.
+      - key: MODELO_IA
+        sync: false

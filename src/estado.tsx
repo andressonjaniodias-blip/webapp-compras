@@ -35,6 +35,8 @@ interface Estado {
   /** O servidor esta inalcançavel: trabalhando so no aparelho. */
   offline: boolean;
   iaLigada: boolean;
+  /** Qual modelo faz as analises, para Ajustes mostrar. `null` enquanto nao se sabe. */
+  modeloIa: string | null;
   /**
    * Plano do usuario, vindo do servidor. Independente de `iaLigada`: um plano
    * pago sem chave configurada mostra "indisponivel", e o gratis mostra "recurso
@@ -64,6 +66,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
   const [acesso, setAcesso] = useState<Acesso>('verificando');
   const [offline, setOffline] = useState(false);
   const [iaLigada, setIaLigada] = useState(false);
+  const [modeloIa, setModeloIa] = useState<string | null>(null);
   const [plano, setPlano] = useState<Plano>('gratis');
   const [situacao, setSituacao] = useState<Situacao>('ocioso');
   const [pendentes, setPendentes] = useState(0);
@@ -116,6 +119,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
         const estado = await verificarSessao();
         if (!vivo) return;
         setIaLigada(estado.iaLigada);
+        setModeloIa(estado.modeloIa ?? null);
         setPlano(estado.plano ?? 'gratis');
         setAcesso(estado.autenticado ? 'liberado' : 'bloqueado');
         if (estado.autenticado) void sincronizarAgora();
@@ -158,6 +162,7 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     async (senha: string) => {
       const estado = await entrar(senha);
       setIaLigada(estado.iaLigada);
+      setModeloIa(estado.modeloIa ?? null);
       setPlano(estado.plano ?? 'gratis');
       setAcesso('liberado');
       setOffline(false);
@@ -173,10 +178,10 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
 
   const valor = useMemo<Estado>(
     () => ({
-      acesso, offline, iaLigada, plano, situacao, pendentes, ultimaEm, mensagem,
+      acesso, offline, iaLigada, modeloIa, plano, situacao, pendentes, ultimaEm, mensagem,
       sincronizarAgora, autenticar, encerrarSessao, atualizarPendentes,
     }),
-    [acesso, offline, iaLigada, plano, situacao, pendentes, ultimaEm, mensagem,
+    [acesso, offline, iaLigada, modeloIa, plano, situacao, pendentes, ultimaEm, mensagem,
      sincronizarAgora, autenticar, encerrarSessao, atualizarPendentes],
   );
 

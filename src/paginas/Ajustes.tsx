@@ -65,7 +65,7 @@ const TEMAS: readonly { valor: Tema; nome: string }[] = [
 export function Ajustes() {
   const navegar = useNavigate();
   const {
-    pendentes, ultimaEm, situacao, offline, iaLigada, plano,
+    pendentes, ultimaEm, situacao, offline, iaLigada, modeloIa, plano,
     sincronizarAgora, encerrarSessao, atualizarPendentes,
   } = useApp();
 
@@ -321,7 +321,7 @@ export function Ajustes() {
           {!limites.ia
             ? 'do plano pago'
             : iaLigada
-              ? 'ligadas'
+              ? `ligadas${modeloIa ? `, com o modelo ${modeloIa}` : ''}`
               : 'indisponíveis (sem chave no servidor)'}.
         </p>
         <button type="button" className="botao botao-largo botao-perigo" onClick={() => void encerrarSessao()}>

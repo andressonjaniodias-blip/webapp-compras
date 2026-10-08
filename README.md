@@ -84,6 +84,8 @@ build, start e a lista de variáveis. Preencha no painel:
 | `SENHA_HASH` | `npm run senha:hash -- "sua senha"` |
 | `SESSAO_SEGREDO` | `npm run segredo` |
 | `ANTHROPIC_API_KEY` | opcional, veja abaixo |
+| `PLANO` | opcional: `pago` libera a IA e os limites do plano |
+| `MODELO_IA` | opcional: o modelo das análises, veja abaixo |
 
 O plano gratuito hiberna depois de 15 minutos parado e leva perto de um minuto
 para acordar. **Isso atrapalha pouco**: abrir o app e registrar compras não
@@ -95,10 +97,26 @@ sincronização espera em segundo plano sem travar a tela.
 Opcionais. Sem `ANTHROPIC_API_KEY` configurada, o app funciona inteiro e a tela
 de resumo apenas avisa que as dicas estão desligadas.
 
-Com a chave, o botão **Analisar** manda o mês (e o anterior, para comparar) para
-o Claude, que aponta o que subiu, o que se repete e onde dá para cortar. Custa
-por volta de **US$ 0,10 por análise** — a chave fica só no servidor e nunca
-chega ao navegador.
+Elas pedem **duas** variáveis: `ANTHROPIC_API_KEY` e `PLANO=pago`. Só a chave não
+basta — a IA é a única coisa que o plano barra de verdade, no servidor.
+
+Com as duas, o botão **Analisar** manda o mês (e o anterior, para comparar) para
+o Claude, que aponta o que subiu, o que se repete e onde dá para cortar. A chave
+fica só no servidor e nunca chega ao navegador.
+
+O modelo vem de `MODELO_IA` e pode ser trocado no painel, sem novo deploy. Sem a
+variável vale o mais barato. Preços por milhão de tokens, em outubro de 2026:
+
+| `MODELO_IA` | Entrada | Saída | Por análise (estimativa) |
+| --- | --- | --- | --- |
+| `claude-haiku-5-5` (padrão) | US$ 0,10 | US$ 0,50 | menos de 1 centavo |
+| `claude-sonnet-5-5` | US$ 2 | US$ 10 | cerca de 5 centavos |
+| `claude-opus-5-5` | US$ 4 | US$ 20 | cerca de 10 centavos |
+
+A estimativa supõe 5 mil tokens de entrada e 4 mil de saída por análise; o custo
+real aparece na página de uso do Console da Anthropic. Valor fora da lista cai
+no padrão: os modelos não aceitam a mesma chamada, e a lista em
+`compartilhado/modelos.ts` só tem os que aceitam.
 
 ## Segurança
 

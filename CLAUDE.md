@@ -159,6 +159,12 @@ Rode as três antes de dar qualquer mudança por concluída.
 - **Sem `DATABASE_URL`, o servidor sobe com Postgres local** (PGlite em
   `.dados/`) e **sem senha**. Isso só vale em desenvolvimento: havendo
   `DATABASE_URL`, ele se recusa a subir sem `SENHA_HASH`.
+- **As dicas de IA pedem duas variáveis: `ANTHROPIC_API_KEY` e `PLANO=pago`.**
+  Só a chave não liga nada. O modelo vem de `MODELO_IA` (padrão
+  `claude-haiku-5-5`) e a lista aceita é fechada, em `compartilhado/modelos.ts`:
+  os modelos não aceitam a mesma chamada — o Haiku 4.5, por exemplo, rejeita o
+  `effort` que as duas rotas enviam. Nada disso tem teste contra a API de
+  verdade: `teste:contas` só cobre a validação do nome.
 - Falha de rede **não** tranca o app. A tela de senha só aparece quando o
   servidor diz explicitamente que não há sessão. Ver `src/estado.tsx`.
 - Nenhum segredo no repositório nem no cofre — só onde ele mora.

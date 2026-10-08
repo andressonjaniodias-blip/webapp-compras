@@ -86,6 +86,11 @@ export interface EstadoSessao {
    * porque hoje a chave nao esta configurada e nada pode parecer quebrado.
    */
   plano: Plano;
+  /**
+   * Qual modelo faz as analises. Opcional porque um app ja aberto pode falar
+   * com um servidor publicado antes de o campo existir.
+   */
+  modeloIa?: string;
 }
 
 export function verificarSessao(): Promise<EstadoSessao> {

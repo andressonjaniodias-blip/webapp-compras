@@ -48,6 +48,7 @@ import {
   simular,
 } from '../compartilhado/previsao';
 import { limitesDo } from '../compartilhado/planos';
+import { MODELO_DE_IA_PADRAO, MODELOS_DE_IA, modeloValido } from '../compartilhado/modelos';
 import {
   adivinharCategoria,
   deveAplicarSozinho,
@@ -1065,6 +1066,19 @@ console.log('\n13. Os limites do plano');
   const agora = T(2026, 9, 1);
   const base = dados({ rendas: [renda({ data: T(2026, 1, 5) })] });
   igual('a projecao respeita o horizonte pedido', projetar(base, { meses: 3, agora }).length, 3);
+
+  // O modelo da IA vem de variavel de ambiente, entao chega como texto digitado
+  // num painel. Erro de digitacao tem de cair no padrao, e nao numa chamada que
+  // so falha na hora da analise, com mensagem que nao aponta para a variavel.
+  igual('sem variavel, a IA usa o modelo padrao', modeloValido(undefined), 'claude-haiku-5-5');
+  igual('um modelo da lista e aceito', modeloValido('claude-opus-5-5'), 'claude-opus-5-5');
+  igual('nome desconhecido cai no padrao', modeloValido('claude-opus-55'), MODELO_DE_IA_PADRAO);
+  igual(
+    'o haiku 4.5 fica fora: ele rejeita o parametro de esforco que a chamada envia',
+    modeloValido('claude-haiku-4-5'),
+    MODELO_DE_IA_PADRAO,
+  );
+  conferir('o padrao esta na lista', MODELOS_DE_IA.includes(MODELO_DE_IA_PADRAO));
 }
 
 // ================================================= 14. categorizacao
