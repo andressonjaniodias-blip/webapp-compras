@@ -6,11 +6,24 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
     />
-    <meta name="theme-color" content="#0f1720" />
+    <!-- Uma por tema: a barra do navegador acompanha o fundo. Com o tema fixado
+         em Ajustes, `src/lib/tema.ts` iguala as duas. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7faf7" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1720" />
     <meta name="description" content="Registro pessoal de compras." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- `default`, e nao `black-translucent`: a translucida poe letra branca na
+         barra de status, que some sobre o fundo do tema claro. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Compras</title>
+    <!-- O tema fixado em Ajustes, aplicado antes do primeiro quadro para a tela
+         nao piscar no tema errado. A mesma chave de `src/lib/tema.ts`. -->
+    <script>
+      try {
+        var tema = localStorage.getItem('tema');
+        if (tema === 'claro' || tema === 'escuro') document.documentElement.dataset.tema = tema;
+      } catch (erro) {}
+    </script>
   </head>
   <body>
     <div id="raiz"></div>

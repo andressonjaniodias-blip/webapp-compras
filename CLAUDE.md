@@ -131,6 +131,19 @@ Rode as três antes de dar qualquer mudança por concluída.
   outro, sem erro para investigar. Ver `src/lib/datas.ts` e a seção 16 de
   `teste:contas`, que roda no Node justamente por ser outro runtime.
 
+- **Cor é papel, nunca valor.** Regra de `src/estilos.css` cita token
+  (`--superficie`, `--estoura-texto`), não hex: o app tem tema claro e escuro, e
+  cor fixa numa regra quebra no outro. Cor de barra (`--cabe`, `--aperta`,
+  `--estoura`) não é cor de texto — texto usa a variante `-texto` e fundo
+  tingido usa a `-suave`; sobre `--acento` só vai `--sobre-acento`. O bloco
+  escuro de tokens existe **duas vezes** (aparelho no escuro, e escuro fixado em
+  Ajustes) e os dois têm de ficar iguais. A escolha mora no `localStorage`
+  (`src/lib/tema.ts`), não no Dexie, porque precisa valer antes do primeiro
+  quadro; o `index.html` lê a mesma chave.
+- **Valor em destaque usa `--fonte-valor`** (Geist Mono); texto usa `--fonte`
+  (Outfit). As duas são servidas pelo próprio app, e só o arquivo latino de
+  cada uma entra no build — fonte de fora quebraria o uso sem sinal.
+
 - Identificadores, arquivos e comentários em **português**.
 - Comentário de bloco no topo do arquivo explicando **por que** ele existe, não
   o que faz. Siga o tom de `src/dados/compras.ts` e `compartilhado/tipos.ts`.

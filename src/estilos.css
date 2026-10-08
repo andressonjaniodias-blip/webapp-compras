@@ -2,24 +2,161 @@
  * Um arquivo de estilo, sem framework.
  *
  * A tela e desenhada para uma mao so, dentro do mercado: alvos de toque
- * grandes, contraste alto e o botao mais usado ao alcance do polegar. Fundo
- * escuro porque o app abre muito em corredor com luz forte, onde tela clara
- * lava.
+ * grandes, contraste alto e o botao mais usado ao alcance do polegar.
+ *
+ * DOIS TEMAS, COM OS MESMOS PAPEIS. O app nasceu so escuro. Hoje o tema segue
+ * o aparelho e pode ser fixado em Ajustes (`src/lib/tema.ts`). Nenhuma regra
+ * abaixo cita cor: cita o PAPEL (`--superficie`, `--estoura-texto`), e os
+ * blocos de tokens dizem que cor o papel tem em cada tema. Cor fixa numa regra
+ * e exatamente o que quebra no outro tema.
+ *
+ * TRES REGRAS DE USO, com os pares medidos (texto 4,5:1, grafico 3:1):
+ *
+ * - Cor de BARRA nao e cor de TEXTO. `--cabe`, `--aperta` e `--estoura` pintam
+ *   barra, borda e icone. Texto usa a variante `-texto`, e fundo tingido usa a
+ *   `-suave`.
+ * - Sobre `--acento` so vai `--sobre-acento`. No claro o botao e um verde
+ *   fundo justamente para o texto branco passar; o verde vivo e `--marca`, e
+ *   ele nunca recebe texto.
+ * - Estado nunca e so cor: leva o nome junto (Cabe, Aperta, Estoura).
+ *
+ * O bloco escuro aparece DUAS vezes, e os dois tem de ficar iguais: um vale
+ * quando o aparelho esta no escuro e ninguem escolheu nada, o outro quando o
+ * escuro foi escolhido a mao. CSS puro nao tem como dizer isso uma vez so.
  */
 
+/*
+ * As fontes moram no proprio app: fonte de fora quebraria o uso sem sinal.
+ *
+ * So o arquivo LATINO de cada uma. Os pacotes trazem um arquivo por alfabeto, e
+ * importar o CSS deles poria todos no precache do PWA — cirilico e vietnamita
+ * baixados para o aparelho de quem escreve em portugues.
+ */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2') format('woff2');
+}
+
 :root {
+  color-scheme: light;
+
+  --fundo: #f7faf7;
+  --superficie: #ffffff;
+  --superficie-alta: #edf4ef;
+  --borda: #d5e0d9;
+  --borda-forte: #7a8f83;
+  --cartao-borda: transparent;
+  --texto: #10231a;
+  --texto-fraco: #4f6358;
+
+  --acento: #0e7a43;
+  --sobre-acento: #ffffff;
+  --acento-texto: #0e7a43;
+  --acento-suave: #ddf3e3;
+  --marca: #15b95c;
+
+  --cabe: #12874b;
+  --cabe-texto: #0e7a43;
+  --cabe-suave: #ddf3e3;
+  --aperta: #b45309;
+  --aperta-texto: #8a4b00;
+  --aperta-suave: #fcf3dc;
+  --estoura: #c62828;
+  --estoura-texto: #b3261e;
+  --estoura-suave: #fbe9e7;
+
+  --sombra: 0 1px 2px rgba(16, 35, 26, 0.05), 0 10px 28px rgba(16, 35, 26, 0.07);
+  --sombra-flutuante: 0 12px 28px rgba(16, 35, 26, 0.18);
+  --rodape-fundo: rgba(247, 250, 247, 0.92);
+
+  --raio: 14px;
+  --raio-cartao: 20px;
+  --toque: 48px;
+
+  --fonte: 'Outfit', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* O valor em fonte de largura fixa e a assinatura do cupom: parece impresso. */
+  --fonte-valor: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Escuro, quando o aparelho pede e ninguem fixou o claro. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema='claro']) {
+    color-scheme: dark;
+
+    --fundo: #0f1720;
+    --superficie: #182430;
+    --superficie-alta: #223140;
+    --borda: #2c3f52;
+    --borda-forte: #6f879e;
+    --cartao-borda: #2c3f52;
+    --texto: #e8eef4;
+    --texto-fraco: #90a4b8;
+
+    --acento: #4ade80;
+    --sobre-acento: #06210f;
+    --acento-texto: #4ade80;
+    --acento-suave: #16341f;
+    --marca: #4ade80;
+
+    --cabe: #4ade80;
+    --cabe-texto: #4ade80;
+    --cabe-suave: #16341f;
+    --aperta: #fbbf24;
+    --aperta-texto: #fbbf24;
+    --aperta-suave: #3a2f12;
+    --estoura: #f87171;
+    --estoura-texto: #fca5a5;
+    --estoura-suave: #3b1a1a;
+
+    --sombra: none;
+    --sombra-flutuante: 0 12px 28px rgba(0, 0, 0, 0.45);
+    --rodape-fundo: rgba(15, 23, 32, 0.94);
+  }
+}
+
+/* Escuro, fixado em Ajustes. Mantenha igual ao bloco de cima. */
+:root[data-tema='escuro'] {
+  color-scheme: dark;
+
   --fundo: #0f1720;
   --superficie: #182430;
   --superficie-alta: #223140;
   --borda: #2c3f52;
+  --borda-forte: #6f879e;
+  --cartao-borda: #2c3f52;
   --texto: #e8eef4;
   --texto-fraco: #90a4b8;
+
   --acento: #4ade80;
-  --acento-escuro: #16341f;
-  --perigo: #f87171;
-  --aviso: #fbbf24;
-  --raio: 14px;
-  --toque: 48px;
+  --sobre-acento: #06210f;
+  --acento-texto: #4ade80;
+  --acento-suave: #16341f;
+  --marca: #4ade80;
+
+  --cabe: #4ade80;
+  --cabe-texto: #4ade80;
+  --cabe-suave: #16341f;
+  --aperta: #fbbf24;
+  --aperta-texto: #fbbf24;
+  --aperta-suave: #3a2f12;
+  --estoura: #f87171;
+  --estoura-texto: #fca5a5;
+  --estoura-suave: #3b1a1a;
+
+  --sombra: none;
+  --sombra-flutuante: 0 12px 28px rgba(0, 0, 0, 0.45);
+  --rodape-fundo: rgba(15, 23, 32, 0.94);
 }
 
 * {
@@ -33,9 +170,22 @@ body {
   padding: 0;
   background: var(--fundo);
   color: var(--texto);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--fonte);
   font-size: 16px; /* menos que isso faz o iOS dar zoom ao focar um campo */
   line-height: 1.5;
+}
+
+/*
+ * O foco de teclado, que nao existia: no escuro o contorno padrao do navegador
+ * ainda aparecia, no claro ele some contra o branco.
+ */
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+input[type='radio']:focus-visible,
+input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--acento-texto);
+  outline-offset: 2px;
 }
 
 .app {
@@ -120,11 +270,17 @@ body {
 
 /* --------------------------------------------------------------- blocos */
 
+/*
+ * A elevacao muda de linguagem com o tema: no claro o cartao e branco com
+ * sombra curta e sem contorno; no escuro sombra nao aparece, entao quem separa
+ * o cartao do fundo e o contorno. Por isso a borda tem token proprio.
+ */
 .cartao {
   background: var(--superficie);
-  border: 1px solid var(--borda);
-  border-radius: var(--raio);
-  padding: 14px;
+  border: 1px solid var(--cartao-borda);
+  border-radius: var(--raio-cartao);
+  box-shadow: var(--sombra);
+  padding: 16px;
   margin-bottom: 12px;
 }
 
@@ -150,7 +306,7 @@ body {
 }
 
 .aviso {
-  background: var(--acento-escuro);
+  background: var(--acento-suave);
   border: 1px solid var(--acento);
   border-radius: var(--raio);
   padding: 10px 12px;
@@ -159,15 +315,21 @@ body {
 }
 
 .aviso-erro {
-  background: #3b1a1a;
-  border-color: var(--perigo);
-  color: #fecaca;
+  background: var(--estoura-suave);
+  border-color: var(--estoura);
+  color: var(--estoura-texto);
 }
 
 .aviso-atencao {
-  background: #3a2f12;
-  border-color: var(--aviso);
-  color: #fde68a;
+  background: var(--aperta-suave);
+  border-color: var(--aperta);
+  color: var(--aperta-texto);
+}
+
+/* O link dentro do aviso herda a cor dele: verde sobre ambar nao foi medido. */
+.aviso-erro .link,
+.aviso-atencao .link {
+  color: inherit;
 }
 
 /* --------------------------------------------------------------- campos */
@@ -188,7 +350,9 @@ body {
   width: 100%;
   min-height: var(--toque);
   padding: 10px 12px;
-  border: 1px solid var(--borda);
+  /* `--borda-forte`: o contorno e o que diz "isto e um campo" sobre cartao
+     branco, e a borda fina de divisor mede 1,3:1 ali. */
+  border: 1px solid var(--borda-forte);
   border-radius: var(--raio);
   background: var(--superficie);
   color: var(--texto);
@@ -201,8 +365,14 @@ body {
   outline-offset: -1px;
 }
 
+/*
+ * Desabilitado por COR, nao por opacidade. Opacidade sobre branco apaga o
+ * texto, e botao desabilitado aqui costuma carregar o motivo ("plano pago").
+ */
 .entrada:disabled {
-  opacity: 0.55;
+  background: var(--superficie-alta);
+  border-style: dashed;
+  color: var(--texto-fraco);
 }
 
 textarea.entrada {
@@ -226,15 +396,25 @@ textarea.entrada {
 }
 
 .botao:active { transform: translateY(1px); }
-.botao:disabled { opacity: 0.45; cursor: default; transform: none; }
 
 .botao-primario {
   background: var(--acento);
   border-color: var(--acento);
-  color: #06210f;
+  border-radius: 999px;
+  color: var(--sobre-acento);
 }
 
-.botao-perigo { color: var(--perigo); }
+.botao-perigo { color: var(--estoura-texto); }
+
+/* Depois das variantes, para valer tambem sobre o primario e o de perigo. */
+.botao:disabled {
+  background: transparent;
+  border-color: var(--borda-forte);
+  border-style: dashed;
+  color: var(--texto-fraco);
+  cursor: default;
+  transform: none;
+}
 .botao-largo { width: 100%; }
 
 .acoes {
@@ -255,7 +435,8 @@ textarea.entrada {
   gap: 8px;
   justify-content: center;
   padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-  background: rgba(15, 23, 32, 0.94);
+  background: var(--rodape-fundo);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border-top: 1px solid var(--borda);
 }
@@ -281,9 +462,9 @@ textarea.entrada {
 }
 
 .chip-ativo {
-  background: var(--acento-escuro);
+  background: var(--acento-suave);
   border-color: var(--acento);
-  color: var(--acento);
+  color: var(--acento-texto);
   font-weight: 600;
 }
 
@@ -322,6 +503,7 @@ textarea.entrada {
 }
 
 .compra-valor {
+  font-family: var(--fonte-valor);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   font-size: 1.05rem;
@@ -342,6 +524,7 @@ textarea.entrada {
 .item-meta { font-size: 0.8rem; color: var(--texto-fraco); }
 
 .item-valor {
+  font-family: var(--fonte-valor);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   white-space: nowrap;
@@ -391,14 +574,14 @@ textarea.entrada {
 .conferencia {
   flex: 2;
   font-size: 0.8rem;
-  color: var(--aviso);
+  color: var(--aperta-texto);
   line-height: 1.3;
 }
 
 .conferencia button {
   background: none;
   border: none;
-  color: var(--acento);
+  color: var(--acento-texto);
   font: inherit;
   text-decoration: underline;
   padding: 0;
@@ -434,6 +617,7 @@ textarea.entrada {
 }
 
 .sugestao-preco {
+  font-family: var(--fonte-valor);
   font-size: 0.8rem;
   color: var(--texto-fraco);
   white-space: nowrap;
@@ -443,24 +627,40 @@ textarea.entrada {
 /* ----------------------------------------------------------- resumo */
 
 .total-grande {
+  font-family: var(--fonte-valor);
   font-size: 2.1rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
 }
 
+/*
+ * O trilho e uma REGUA TRACEJADA, nao uma faixa. Faixa clara sobre cartao
+ * branco mede 1,2:1 e some; a regua em `--borda-forte` passa de 3:1 nos dois
+ * temas, e e a mesma linha que vem antes de todo total.
+ */
 .barra {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--superficie-alta);
-  overflow: hidden;
+  position: relative;
+  height: 10px;
   margin-top: 6px;
 }
 
+.barra::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1.5px dashed var(--borda-forte);
+  transform: translateY(-50%);
+}
+
 .barra-preenchida {
+  position: relative;
   height: 100%;
+  max-width: 100%;
   background: var(--acento);
-  border-radius: 999px;
+  border-radius: 5px;
 }
 
 .fatia { margin-bottom: 12px; }
@@ -472,8 +672,15 @@ textarea.entrada {
   font-size: 0.92rem;
 }
 
-.subiu { color: var(--perigo); }
-.caiu { color: var(--acento); }
+/* O segundo filho e sempre o valor da linha. */
+.fatia-linha > span:last-child {
+  font-family: var(--fonte-valor);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.subiu { color: var(--estoura-texto); }
+.caiu { color: var(--cabe-texto); }
 
 .carregando {
   text-align: center;
@@ -492,8 +699,8 @@ textarea.entrada {
 }
 
 .selo-pendente {
-  background: var(--acento-escuro);
-  color: var(--acento);
+  background: var(--acento-suave);
+  color: var(--acento-texto);
 }
 
 .entrar {
@@ -527,12 +734,12 @@ textarea.entrada {
   background: var(--superficie-alta);
   border: 1px solid var(--borda);
   border-radius: var(--raio);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--sombra-flutuante);
 }
 
 .sugestao-destacada {
   border-color: var(--acento);
-  background: var(--acento-escuro);
+  background: var(--acento-suave);
 }
 
 .sugestao-antes {
@@ -561,8 +768,14 @@ textarea.entrada {
   cursor: pointer;
 }
 
+.previsao-linha strong {
+  font-family: var(--fonte-valor);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .previsao-aperto {
-  color: var(--aviso);
+  color: var(--aperta-texto);
   white-space: nowrap;
 }
 
@@ -609,8 +822,12 @@ textarea.entrada {
   border-bottom: none;
 }
 
+.previsao td {
+  font-family: var(--fonte-valor);
+}
+
 .previsao-apertado {
-  background: rgba(251, 191, 36, 0.08);
+  background: var(--aperta-suave);
 }
 
 .previsao-parcial {
@@ -625,27 +842,33 @@ textarea.entrada {
 }
 
 .previsao-borrado {
-  color: var(--borda);
+  color: var(--borda-forte);
   letter-spacing: 0.4em;
   text-align: center;
 }
 
 .selo-plano {
-  background: var(--superficie-alta);
-  color: var(--aviso);
-  border: 1px solid var(--aviso);
+  background: var(--aperta-suave);
+  color: var(--aperta-texto);
+  border: 1px solid var(--aperta);
   margin-right: 6px;
+}
+
+/* Dentro de botao o selo vem DEPOIS do texto, entao a folga troca de lado. */
+.botao .selo-plano {
+  margin-left: 8px;
+  margin-right: 0;
 }
 
 /* Situacao da fatura, de relance. */
 .selo-aberta { background: var(--superficie-alta); color: var(--texto-fraco); }
-.selo-fechada { background: var(--superficie-alta); color: var(--aviso); }
-.selo-paga { background: var(--acento-escuro); color: var(--acento); }
+.selo-fechada { background: var(--aperta-suave); color: var(--aperta-texto); }
+.selo-paga { background: var(--cabe-suave); color: var(--cabe-texto); }
 
 /* O veredito do simulador — a resposta em uma linha. */
 .veredito {
-  border-radius: var(--raio);
-  padding: 14px 16px;
+  border-radius: var(--raio-cartao);
+  padding: 16px 18px;
   margin: 12px 0;
   border: 1px solid var(--borda);
 }
@@ -659,15 +882,16 @@ textarea.entrada {
 .veredito p {
   margin: 4px 0 0;
   font-size: 0.9rem;
-  color: var(--texto-fraco);
+  color: var(--texto);
 }
 
-.veredito-cabe { border-color: var(--acento); background: var(--acento-escuro); }
-.veredito-cabe strong { color: var(--acento); }
-.veredito-aperta { border-color: var(--aviso); background: rgba(251, 191, 36, 0.1); }
-.veredito-aperta strong { color: var(--aviso); }
-.veredito-estoura { border-color: var(--perigo); background: rgba(248, 113, 113, 0.1); }
-.veredito-estoura strong { color: var(--perigo); }
+/* Os tres estados: borda na cor de barra, nome na cor de texto, fundo suave. */
+.veredito-cabe { border-color: var(--cabe); background: var(--cabe-suave); }
+.veredito-cabe strong { color: var(--cabe-texto); }
+.veredito-aperta { border-color: var(--aperta); background: var(--aperta-suave); }
+.veredito-aperta strong { color: var(--aperta-texto); }
+.veredito-estoura { border-color: var(--estoura); background: var(--estoura-suave); }
+.veredito-estoura strong { color: var(--estoura-texto); }
 
 /* Chips: a fileira das mais usadas por voce, e o "+" de opcao nova. */
 .chips-destaque {
@@ -684,12 +908,14 @@ textarea.entrada {
 
 /* O motivo do palpite de categoria. Some assim que voce toca nos chips. */
 .dica-palpite {
-  color: var(--acento);
+  color: var(--acento-texto);
 }
 
 .cartao-exemplo {
   opacity: 0.75;
   border-style: dashed;
+  border-color: var(--borda-forte);
+  box-shadow: none;
 }
 
 .interruptor {
@@ -710,7 +936,7 @@ textarea.entrada {
 .link {
   background: none;
   border: none;
-  color: var(--acento);
+  color: var(--acento-texto);
   font: inherit;
   text-decoration: underline;
   padding: 0;
@@ -733,8 +959,8 @@ textarea.entrada {
  * semaforo generico levava a escrever `.caiu` para pintar de verde uma sobra
  * positiva — le exatamente ao contrario do que significa.
  */
-.valor-ruim { color: var(--perigo); }
-.valor-bom { color: var(--acento); }
+.valor-ruim { color: var(--estoura-texto); }
+.valor-bom { color: var(--cabe-texto); }
 
 /*
  * O razao do mes: uma subtracao que o usuario precisa conseguir conferir a olho.
@@ -754,15 +980,20 @@ textarea.entrada {
 }
 
 .razao-valor {
+  font-family: var(--fonte-valor);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
-.razao-sinal { color: var(--texto-fraco); }
+.razao-sinal {
+  font-family: var(--fonte-valor);
+  color: var(--texto-fraco);
+}
 
+/* Tracejada, como a linha que vem antes do total num cupom. */
 .razao-regua {
   border: none;
-  border-top: 1px solid var(--borda);
+  border-top: 1.5px dashed var(--borda-forte);
   margin: 8px 0 6px;
 }
 

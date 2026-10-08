@@ -53,7 +53,14 @@ import { limitesDo } from '../../compartilhado/planos';
 import { pedirRegras } from '../dados/api';
 import { formatarReais } from '../lib/dinheiro';
 import { formatarData, formatarDataHora } from '../lib/datas';
+import { gravarTema, lerTema, type Tema } from '../lib/tema';
 import { useApp } from '../estado';
+
+const TEMAS: readonly { valor: Tema; nome: string }[] = [
+  { valor: 'automatico', nome: 'Seguir o aparelho' },
+  { valor: 'claro', nome: 'Claro' },
+  { valor: 'escuro', nome: 'Escuro' },
+];
 
 export function Ajustes() {
   const navegar = useNavigate();
@@ -65,6 +72,7 @@ export function Ajustes() {
   const [recado, setRecado] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [tema, setTema] = useState<Tema>(lerTema);
   const arquivo = useRef<HTMLInputElement>(null);
 
   const limites = limitesDo(plano);
@@ -150,6 +158,28 @@ export function Ajustes() {
             </button>
           </div>
         )}
+      </div>
+
+      <h2 className="secao-titulo">Aparência</h2>
+      <div className="cartao">
+        {TEMAS.map((opcao) => (
+          <label className="interruptor" key={opcao.valor}>
+            <input
+              type="radio"
+              name="tema"
+              checked={tema === opcao.valor}
+              onChange={() => {
+                gravarTema(opcao.valor);
+                setTema(opcao.valor);
+              }}
+            />
+            <span>{opcao.nome}</span>
+          </label>
+        ))}
+        <p className="dica">
+          Claro ou escuro, com as mesmas cores de sinal. A escolha vale{' '}
+          <strong>só neste aparelho</strong>.
+        </p>
       </div>
 
       <h2 className="secao-titulo">Categoria automática</h2>

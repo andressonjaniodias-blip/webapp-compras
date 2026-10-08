@@ -28,6 +28,9 @@ export default defineConfig({
         scope: './',
         display: 'standalone',
         orientation: 'portrait',
+        // O manifesto aceita UMA cor, e ela pinta a tela de abertura antes de
+        // o app saber o tema. Fica a escura, que e a do icone; depois de aberto,
+        // as `theme-color` do `index.html` assumem.
         background_color: '#0f1720',
         theme_color: '#0f1720',
         icons: [
