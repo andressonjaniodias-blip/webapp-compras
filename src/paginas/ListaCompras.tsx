@@ -1,6 +1,16 @@
 /**
- * A tela inicial: todas as compras, da mais recente para a mais antiga, com o
- * botao de nova compra fixo no rodape, ao alcance do polegar.
+ * A tela inicial: as compras, da mais recente para a mais antiga, e o dinheiro
+ * que entra, em duas abas (Despesas e Receitas), com o botao de novo
+ * lancamento fixo no rodape, ao alcance do polegar.
+ *
+ * AS ABAS EXISTEM PORQUE O DINHEIRO QUE ENTRA ESTAVA ESCONDIDO. Para achar uma
+ * entrada era preciso ir a Carteira, rolar ate "Cadastros" e abrir Entradas — e
+ * la o que aparece e a REGRA ("salario, todo dia 5"), nao as datas em que o
+ * dinheiro caiu. A aba Receitas lista os lancamentos, mes a mes, no mesmo
+ * formato das compras. As abas seguem a regra da porta 💳: somem so no modo
+ * simples, nunca por falta de dado — a aba Receitas vazia e o caminho para
+ * cadastrar a primeira entrada. A aba escolhida vive na URL (`?aba=receitas`)
+ * para que abrir um lancamento e voltar devolva a mesma aba.
  *
  * Criar uma compra leva direto para a tela de edicao. Nao ha etapa de
  * confirmacao nem status de "aberta": no mercado, o caminho entre pegar o
@@ -22,30 +32,58 @@
  * — o modo simples —, jamais por falta de dado ou de rede.
  */
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { criarCompra, listarCompras } from '../dados/compras';
 import type { CompraLocal } from '../dados/banco';
+import { criarRenda } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
+import { ORIGENS_RENDA } from '../../compartilhado/constantes';
+import { lancamentosDeRenda } from '../../compartilhado/carteira';
 import { limitesDo } from '../../compartilhado/planos';
 import { panorama } from '../../compartilhado/previsao';
 import { formatarReais } from '../lib/dinheiro';
-import { chaveMes, formatarData, nomeMes } from '../lib/datas';
+import { chaveMes, formatarData, intervaloDoMes, nomeMes } from '../lib/datas';
 import { useApp } from '../estado';
+import { Abas } from '../componentes/Abas';
 import { BarraSituacao } from '../componentes/BarraSituacao';
+
+type Aba = 'despesas' | 'receitas';
+
+const ABAS: readonly { valor: Aba; rotulo: string }[] = [
+  { valor: 'despesas', rotulo: 'Despesas' },
+  { valor: 'receitas', rotulo: 'Receitas' },
+];
 
 export function ListaCompras() {
   const navegar = useNavigate();
+  const [params, setParams] = useSearchParams();
   const { atualizarPendentes, plano } = useApp();
   const compras = useLiveQuery(listarCompras, [], undefined);
   const financeiro = useFinanceiro();
 
   const apelidos = new Map(financeiro.dados.contas.map((c) => [c.id, c.apelido]));
 
+  // No modo simples nao ha aba: a tela e so de compras, como sempre foi. Um
+  // `?aba=receitas` esquecido num atalho nao pode prender a pessoa numa lista
+  // que ela escolheu nao ter.
+  const comAbas = !financeiro.modoSimples;
+  const aba: Aba = comAbas && params.get('aba') === 'receitas' ? 'receitas' : 'despesas';
+
+  function trocarAba(nova: Aba) {
+    setParams(nova === 'receitas' ? { aba: 'receitas' } : {}, { replace: true });
+  }
+
   async function nova() {
     const id = await criarCompra();
     await atualizarPendentes();
     navegar('/compra/' + id);
+  }
+
+  async function novaEntrada() {
+    const id = await criarRenda({ origem: ORIGENS_RENDA[0], periodicidade: 'mensal' });
+    await atualizarPendentes();
+    navegar('/rendas?editar=' + id);
   }
 
   return (
@@ -93,31 +131,135 @@ export function ListaCompras() {
             onTocar={() => navegar('/simular')}
           />
         )}
+        {comAbas && (
+          <Abas abas={ABAS} ativa={aba} onChange={trocarAba} rotulo="Tipo de lançamento" />
+        )}
       </header>
 
-      {compras === undefined && <p className="carregando">Carregando…</p>}
+      {aba === 'despesas' && (
+        <>
+          {compras === undefined && <p className="carregando">Carregando…</p>}
 
-      {compras !== undefined && compras.length === 0 && (
-        <p className="vazio">
-          Nenhuma compra ainda.
-          <br />
-          Toque em <strong>Nova compra</strong> para registrar a primeira.
-        </p>
+          {compras !== undefined && compras.length === 0 && (
+            <p className="vazio">
+              Nenhuma compra ainda.
+              <br />
+              Toque em <strong>Nova compra</strong> para registrar a primeira.
+            </p>
+          )}
+
+          {compras !== undefined && compras.length > 0 && (
+            <ul className="lista">
+              {linhas(compras, apelidos, (id) => navegar('/compra/' + id))}
+            </ul>
+          )}
+        </>
       )}
 
-      {compras !== undefined && compras.length > 0 && (
-        <ul className="lista">
-          {linhas(compras, apelidos, (id) => navegar('/compra/' + id))}
-        </ul>
+      {aba === 'receitas' && (
+        <ListaReceitas
+          carregando={financeiro.carregando}
+          rendas={financeiro.dados.rendas}
+          apelidos={apelidos}
+          abrir={(id) => navegar('/rendas?editar=' + id)}
+        />
       )}
 
       <div className="rodape">
-        <button type="button" className="botao botao-primario" onClick={nova}>
-          Nova compra
-        </button>
+        {aba === 'despesas' ? (
+          <button type="button" className="botao botao-primario" onClick={nova}>
+            Nova compra
+          </button>
+        ) : (
+          <button type="button" className="botao botao-primario" onClick={novaEntrada}>
+            Nova entrada
+          </button>
+        )}
       </div>
     </div>
   );
+}
+
+/**
+ * Os lancamentos de entrada, mes a mes. Cada linha e uma DATA em que o dinheiro
+ * caiu — um salario mensal vira uma linha por mes —, e tocar nela abre o
+ * cadastro da regra, porque o app guarda a regra e nao o mes isolado. Por isso
+ * a linha de uma entrada recorrente diz "todo dia N": mexer ali muda todos os
+ * meses, e quem toca precisa saber antes.
+ *
+ * O teto e o fim do mes corrente: o que ainda vai cair neste mes aparece,
+ * marcado, porque "o salario ja caiu?" e a pergunta que mais se faz aqui.
+ *
+ * Sem total por mes de proposito. O Resumo tem o "Entrou", que deixa o vale de
+ * fora (ver `ehDeCaixa`); uma segunda soma aqui, com outra definicao, voltaria
+ * a produzir dois numeros quase iguais.
+ */
+function ListaReceitas({
+  carregando,
+  rendas,
+  apelidos,
+  abrir,
+}: {
+  carregando: boolean;
+  rendas: ReturnType<typeof useFinanceiro>['dados']['rendas'];
+  apelidos: ReadonlyMap<string, string>;
+  abrir: (id: string) => void;
+}) {
+  if (carregando) return <p className="carregando">Carregando…</p>;
+
+  const agora = Date.now();
+  const lancamentos = lancamentosDeRenda(rendas, intervaloDoMes(chaveMes(agora)).fim);
+
+  if (lancamentos.length === 0) {
+    return (
+      <p className="vazio">
+        Nenhuma entrada ainda.
+        <br />
+        Cadastre seu salário uma vez e ele passa a contar todo mês sozinho.
+      </p>
+    );
+  }
+
+  const saida: React.ReactNode[] = [];
+  let mesAnterior = '';
+
+  for (const { chave, renda, quando } of lancamentos) {
+    const mes = chaveMes(quando);
+    if (mes !== mesAnterior) {
+      mesAnterior = mes;
+      saida.push(
+        <li key={'mes-' + mes}>
+          <h2 className="secao-titulo">{nomeMes(mes)}</h2>
+        </li>,
+      );
+    }
+
+    const recorrencia =
+      renda.periodicidade === 'mensal'
+        ? `todo dia ${new Date(renda.data).getDate()}`
+        : renda.periodicidade === 'anual'
+          ? 'todo ano'
+          : 'única';
+    const conta = renda.contaId ? apelidos.get(renda.contaId) : undefined;
+
+    saida.push(
+      <li key={chave}>
+        <button type="button" className="compra" onClick={() => abrir(renda.id)}>
+          <div className="compra-corpo">
+            <div className="compra-titulo">{renda.origem || renda.descricao || 'Entrada'}</div>
+            <div className="compra-meta">
+              {formatarData(quando)} · {recorrencia}
+              {renda.contaId && ` · cai em ${conta ?? 'outra conta'}`}
+              {quando > agora && ' · ainda não caiu'}
+            </div>
+          </div>
+          <span className="compra-valor">{formatarReais(renda.valor)}</span>
+        </button>
+      </li>,
+    );
+  }
+
+  return <ul className="lista">{saida}</ul>;
 }
 
 /**
