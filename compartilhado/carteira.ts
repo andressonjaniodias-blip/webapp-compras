@@ -160,6 +160,37 @@ export function entradasEntre(
   return total;
 }
 
+/** Uma entrada que caiu (ou vai cair) numa data: o lancamento, nao o cadastro. */
+export interface LancamentoDeRenda {
+  /** Estavel entre renderizacoes: a renda e o instante identificam o lancamento. */
+  chave: string;
+  renda: Renda;
+  quando: number;
+}
+
+/**
+ * Os lancamentos de entrada ate `ate`, do mais recente para o mais antigo.
+ *
+ * Existe porque a renda e guardada como REGRA ("salario, todo dia 5"), e quem
+ * procura "o que entrou em agosto" quer a lista de datas, nao a regra. So
+ * reorganiza o que `ocorrenciasDeRenda` ja expande — nao soma nada, de
+ * proposito: o total do mes tem definicao propria (`ehDeCaixa`, o vale fica
+ * fora) e uma segunda soma aqui voltaria a produzir dois numeros quase iguais.
+ */
+export function lancamentosDeRenda(
+  rendas: readonly Renda[],
+  ate: number,
+): LancamentoDeRenda[] {
+  const saida: LancamentoDeRenda[] = [];
+  for (const renda of rendas) {
+    if (!naoExcluido(renda)) continue;
+    for (const quando of ocorrenciasDeRenda(renda, ate)) {
+      saida.push({ chave: renda.id + ':' + quando, renda, quando });
+    }
+  }
+  return saida.sort((a, b) => b.quando - a.quando);
+}
+
 // -------------------------------------------------------------- presuncao
 
 /**
