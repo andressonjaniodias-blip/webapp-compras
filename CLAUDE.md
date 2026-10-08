@@ -57,7 +57,9 @@ Rode as três antes de dar qualquer mudança por concluída.
    sempre e só some por escolha explícita (o modo do app, em Ajustes). Esconder
    a porta escondia junto o único caminho para criar a primeira conta — e num
    aparelho novo, antes da primeira sincronização, tornava contas e cartões
-   inalcançáveis. Ver `decisões.md` no cofre.
+   inalcançáveis. Ver `decisões.md` no cofre. As abas Despesas | Receitas da
+   tela inicial seguem a mesma regra da porta: só somem no modo simples, nunca
+   por falta de dado — a aba Receitas vazia é o caminho até a primeira entrada.
 10. **Compra no crédito não sai do caixa; a fatura sai.** Pagar a fatura é
     `Transferencia`, e ela nunca conta como gasto novo — o gasto foi contado
     quando a compra foi lançada. Somar os dois é a contagem dupla que o
