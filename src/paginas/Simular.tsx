@@ -135,14 +135,6 @@ export function Simular() {
             estimativaFraca={estimativa.fraca}
           />
 
-          {resultado.faltaDeLimite > 0 && (
-            <p className="aviso aviso-erro">
-              <strong>Não cabe no limite deste cartão.</strong> Faltam{' '}
-              {formatarReais(resultado.faltaDeLimite)} de limite disponível — a compra não
-              passa, independentemente de caber no seu mês.
-            </p>
-          )}
-
           <div className="cartao">
             {resultado.parcelas > 1 && (
               <p style={{ marginTop: 0 }}>
@@ -202,6 +194,11 @@ export function Simular() {
  * "cabe" apoiado em zero de gasto previsto e otimista demais para uma decisao de
  * compra. Dizer isso no proprio cartao do veredito e o que impede a resposta de
  * parecer mais segura do que e.
+ *
+ * O LIMITE DO CARTAO MORA AQUI DENTRO, e nao num aviso ao lado. Enquanto morou
+ * ao lado, a tela mostrava um cartao verde "Cabe" e, embaixo, um aviso vermelho
+ * "nao cabe no limite": duas respostas para a mesma pergunta. `estoura` pode
+ * vir sem mes negativo nenhum, entao `mesesNegativos[0]` e opcional aqui.
  */
 function Veredito({
   resultado,
@@ -221,15 +218,29 @@ function Veredito({
   ) : null;
 
   if (resultado.veredito === 'estoura') {
-    const pior = resultado.mesesNegativos[0]!;
+    const pior = resultado.mesesNegativos[0];
+    const semLimite = resultado.faltaDeLimite > 0;
     return (
       <section className="veredito veredito-estoura">
-        <strong>Estoura em {nomeMes(pior.mes)}</strong>
-        <p>
-          {completo
-            ? `Faltam ${formatarReais(Math.abs(pior.saldoAcumulado))} para fechar o mês.`
-            : 'O saldo fica negativo antes do fim do horizonte.'}
-        </p>
+        <strong>
+          {semLimite ? 'Estoura o limite do cartão' : pior ? `Estoura em ${nomeMes(pior.mes)}` : 'Estoura'}
+        </strong>
+        {semLimite && (
+          <p>
+            Faltam {formatarReais(resultado.faltaDeLimite)} de limite: a compra não passa
+            {pior ? '.' : ', mesmo cabendo no seu mês.'}
+          </p>
+        )}
+        {pior && (
+          <p>
+            {semLimite && `E o saldo fica negativo em ${nomeMes(pior.mes)}. `}
+            {completo
+              ? `Faltam ${formatarReais(Math.abs(pior.saldoAcumulado))} para fechar o mês.`
+              : semLimite
+                ? ''
+                : 'O saldo fica negativo antes do fim do horizonte.'}
+          </p>
+        )}
         {ressalva}
       </section>
     );

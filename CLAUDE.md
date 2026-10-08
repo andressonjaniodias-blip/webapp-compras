@@ -111,6 +111,17 @@ Rode as três antes de dar qualquer mudança por concluída.
     caixa, a compra no vale não é saída); o que a conta **manda para o vale**
     sai; e o teto das entradas é **agora**, não o fim do mês. "Caixa" tem uma
     definição só, `ehDeCaixa`, usada pelo saldo e pela sobra.
+20. **O veredito do simulador é um só, e o limite do cartão entra nele.**
+    Compra que o cartão recusa é `estoura`, por mais folga que o mês tenha —
+    então `estoura` pode vir sem nenhum mês negativo, e a tela não pode supor
+    `mesesNegativos[0]`. Enquanto o limite morou num aviso ao lado, a tela
+    mostrava "Cabe" em verde e "não cabe no limite" em vermelho ao mesmo tempo.
+    Limite `0` é "não informado": sem o dado, não há estouro por limite.
+21. **A tela inicial mostra um saldo, não uma sobra.** `Panorama.fechaOMesCom`
+    é o saldo em conta previsto para o fim do mês. A sobra do mês parcial, que
+    ela mostrava antes, fica negativa no dia seguinte ao último pagamento do
+    mês sem que nada de ruim tenha acontecido. Sem conta de dinheiro o campo é
+    `null` e a tela mostra a sobra prevista de um mês cheio (Princípio 0).
 
 ## Convenções
 

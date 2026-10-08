@@ -144,23 +144,40 @@ function LinhaDePrevisao({
 
   const apertado = visao.mesMaisApertado;
   const mostraAperto = apertado !== null && apertado.saldoAcumulado < visao.carteira.saldoEmConta;
+  const mesAtual = visao.linhas[0]?.mes;
+  const mesCheio = visao.linhas.find((linha) => !linha.parcial);
 
   return (
     <button type="button" className="previsao-linha" onClick={onTocar}>
       {/*
-        "AINDA sobra", e nao "sobra prevista deste mes".
-        Este numero e o mes PARCIAL: so o que falta entrar menos o que falta
-        sair. O Resumo mostra outro, o fechamento do mes inteiro, e a Carteira um
-        terceiro. Chamar os tres de "sobra" fazia o app parecer que se
-        contradizia — a tabela dos quatro sentidos esta no topo de
-        `compartilhado/carteira.ts`.
+        "FECHA O MES COM", e nao mais "ainda sobra este mes".
+        O numero antigo era a sobra do mes PARCIAL: o que falta entrar menos o
+        que falta sair. No dia seguinte ao salario nao falta entrar nada, e ele
+        ficava vermelho ate o fim do mes sem nada de ruim ter acontecido. O
+        saldo previsto para o fim do mes nao da esse degrau, e e um saldo: nao
+        disputa a palavra "sobra" com o Resumo e a Carteira — a tabela dos
+        sentidos esta no topo de `compartilhado/carteira.ts`.
+
+        Sem conta de dinheiro nao ha saldo de onde partir. Ai a linha mostra a
+        sobra prevista de um mes cheio, que so depende das entradas.
       */}
-      <span>
-        ainda sobra este mês{' '}
-        <strong className={visao.sobraDoMes < 0 ? 'valor-ruim' : ''}>
-          {formatarReais(visao.sobraDoMes)}
-        </strong>
-      </span>
+      {visao.fechaOMesCom !== null && mesAtual ? (
+        <span>
+          fecha {soOMes(mesAtual)} com{' '}
+          <strong className={visao.fechaOMesCom < 0 ? 'valor-ruim' : ''}>
+            {formatarReais(visao.fechaOMesCom)}
+          </strong>
+        </span>
+      ) : (
+        mesCheio && (
+          <span>
+            sobra prevista em {soOMes(mesCheio.mes).slice(0, 3)}{' '}
+            <strong className={mesCheio.sobra < 0 ? 'valor-ruim' : ''}>
+              {formatarReais(mesCheio.sobra)}
+            </strong>
+          </span>
+        )
+      )}
       {mostraAperto && (
         <span className="previsao-aperto">
           aperto em {nomeMes(apertado.mes).slice(0, 3)}{' '}
@@ -169,6 +186,11 @@ function LinhaDePrevisao({
       )}
     </button>
   );
+}
+
+/** "2026-10" -> "outubro". Na linha de previsao o ano so ocuparia espaco. */
+function soOMes(chave: string): string {
+  return nomeMes(chave).split(' ')[0] ?? '';
 }
 
 /**

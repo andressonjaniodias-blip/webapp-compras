@@ -37,6 +37,7 @@
 import {
   acharConta,
   calcularCarteira,
+  ehDeCaixa,
   entradasEntre,
   gastoPorGrupo,
   mesesCompletosAntes,
@@ -337,6 +338,13 @@ export interface Simulacao {
   mesesNegativos: LinhaPrevisao[];
   /** Quantos meses ficam apertados depois da compra e nao estavam antes. */
   apertosNovos: number;
+  /**
+   * `estoura` por dois motivos, que podem vir juntos: algum mes fica negativo
+   * (`mesesNegativos`) ou falta limite no cartao (`faltaDeLimite`). O segundo
+   * entra aqui porque a compra que o cartao recusa nao cabe, por mais folga que
+   * o mes tenha — e o veredito e a unica coisa que se le na frente da prateleira.
+   * Quem desenha a tela nao pode supor que `estoura` traz mes negativo.
+   */
   veredito: Veredito;
   metasAtrasadas: { descricao: string; atrasoEmMeses: number }[];
 }
@@ -421,7 +429,12 @@ export function simular(
     mesMaisApertado: maisApertado,
     mesesNegativos: negativos,
     apertosNovos: Math.max(0, apertadosDepois.length - apertadosAntes),
-    veredito: negativos.length > 0 ? 'estoura' : apertadosDepois.length > apertadosAntes ? 'aperta' : 'cabe',
+    veredito:
+      negativos.length > 0 || faltaDeLimite > 0
+        ? 'estoura'
+        : apertadosDepois.length > apertadosAntes
+          ? 'aperta'
+          : 'cabe',
     metasAtrasadas: atrasoNasMetas(dados, antes, depois),
   };
 }
@@ -540,8 +553,25 @@ export interface Panorama {
   linhas: LinhaPrevisao[];
   /** A linha de menor saldo acumulado — o mes em que a corda estica. */
   mesMaisApertado: LinhaPrevisao | null;
-  /** Sobra prevista do mes corrente. */
+  /**
+   * Sobra do mes corrente, que e PARCIAL: o que falta entrar menos o que falta
+   * sair. Depois do ultimo pagamento do mes ela e sempre negativa, entao nao
+   * serve de numero de relance — ver `fechaOMesCom`.
+   */
   sobraDoMes: number;
+  /**
+   * Saldo em conta previsto para o fim do mes corrente: o numero da tela
+   * inicial.
+   *
+   * E um SALDO, nao mais uma sobra. A tela mostrava `sobraDoMes`, que trocava de
+   * sinal no dia do pagamento: quem recebe no dia 5 via vermelho por 25 dias,
+   * sem nada de ruim ter acontecido. Aqui o salario so muda de lugar, de "vai
+   * entrar" para "ja esta na conta", e o numero nao da degrau.
+   *
+   * `null` sem conta de dinheiro: nao ha saldo de onde partir, e devolver um
+   * numero seria a mesma sobra parcial com outro nome (Principio 0).
+   */
+  fechaOMesCom: number | null;
 }
 
 /** O que a tela inicial e a Carteira mostram, numa chamada so. */
@@ -549,6 +579,7 @@ export function panorama(dados: DadosFinanceiros, opcoes: OpcoesPrevisao): Panor
   const linhas = projetar(dados, opcoes);
   const futuros = linhas.filter((linha) => !linha.parcial);
   const alvo = futuros.length > 0 ? futuros : linhas;
+  const temCaixa = dados.contas.some((conta) => naoExcluido(conta) && ehDeCaixa(conta));
 
   return {
     carteira: calcularCarteira(dados, opcoes.agora),
@@ -559,6 +590,7 @@ export function panorama(dados: DadosFinanceiros, opcoes: OpcoesPrevisao): Panor
       null,
     ),
     sobraDoMes: linhas[0]?.sobra ?? 0,
+    fechaOMesCom: temCaixa ? (linhas[0]?.saldoAcumulado ?? null) : null,
   };
 }
 

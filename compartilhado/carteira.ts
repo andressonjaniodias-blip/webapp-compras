@@ -21,7 +21,7 @@
  *
  * | numero                                      | pergunta que responde        | rotulo na tela           |
  * | `Carteira.sobraProjetada`                   | e se eu pagar tudo que devo? | "se pagar tudo que deve" |
- * | `LinhaPrevisao.sobra` do mes parcial        | quanto ainda sobra este mes? | "ainda sobra este mes"   |
+ * | `LinhaPrevisao.sobra` do mes parcial        | o que falta entrar e sair?   | linha "(resta)" da tabela |
  * | `MesFinanceiro.sobra`                       | quanto sobrou de fato?       | "sobrou em {mes}"        |
  * | `LinhaPrevisao.sobra` dos meses cheios      | quanto deve sobrar?          | "sobra prevista"         |
  *
@@ -29,6 +29,12 @@
  * o app parecer que se contradizia: a tela inicial dizia 900 e o Resumo dizia
  * 400 para o mesmo mes, ambos corretos, nenhum dizendo qual pergunta respondia.
  * Ao mexer em qualquer um destes, mexa no rotulo tambem.
+ *
+ * A TELA INICIAL NAO MOSTRA SOBRA NENHUMA. Ela ja mostrou a do mes parcial, com
+ * o rotulo "ainda sobra este mes", e esse numero vira negativo no dia seguinte
+ * ao ultimo pagamento do mes: nao falta entrar mais nada. Hoje ela mostra
+ * `Panorama.fechaOMesCom`, o SALDO previsto para o fim do mes ("fecha {mes}
+ * com"), que nao da degrau quando o salario cai.
  *
  * Sobre o SALDO INICIAL: o saldo de uma conta nao da para deduzir do historico
  * de compras, porque falta o dinheiro que ja estava la. O usuario informa uma

@@ -42,6 +42,7 @@ import {
 } from '../compartilhado/parcelamento';
 import {
   estimarGastoCorrente,
+  panorama,
   planejarMeta,
   projetar,
   simular,
@@ -871,6 +872,56 @@ console.log('\n10. A previsao');
   );
 }
 
+// ============================================ 10b. o numero da tela inicial
+
+console.log('\n10b. O numero da tela inicial nao troca de sinal no dia do pagamento');
+{
+  // A tela inicial mostrava a sobra do mes PARCIAL: o que falta entrar menos o
+  // que falta sair. No dia seguinte ao salario nao falta entrar nada, e o numero
+  // ficava vermelho ate o fim do mes sem que nada de ruim tivesse acontecido.
+  // O saldo previsto para o fim do mes nao tem esse degrau: o salario so muda
+  // de lugar, de "vai entrar" para "ja esta na conta".
+  const cc = conta({ id: 'cc10', tipo: 'corrente', saldoInicial: 50000, saldoInicialEm: T(2026, 9, 30) });
+  const salario = renda({ data: T(2026, 1, 5), valor: 350000, contaId: 'cc10' });
+  const historico = [7, 8, 9].map((mes) =>
+    compra({ data: T(2026, mes, 10), total: 120000, contaId: 'cc10' }),
+  );
+  const d = dados({ contas: [cc], rendas: [salario], compras: historico });
+
+  const dia4 = panorama(d, { meses: 12, agora: T(2026, 10, 4) });
+  const dia6 = panorama(d, { meses: 12, agora: T(2026, 10, 6) });
+
+  conferir('no dia 4 a sobra parcial e positiva: o salario ainda vai cair', dia4.sobraDoMes > 0, String(dia4.sobraDoMes));
+  conferir('no dia 6 ela fica negativa, so porque o salario caiu', dia6.sobraDoMes < 0, String(dia6.sobraDoMes));
+
+  conferir('o saldo previsto para o fim do mes e positivo no dia 4', (dia4.fechaOMesCom ?? -1) > 0, String(dia4.fechaOMesCom));
+  conferir('e continua positivo no dia 6', (dia6.fechaOMesCom ?? -1) > 0, String(dia6.fechaOMesCom));
+  igual(
+    'entre os dois dias ele anda so o gasto estimado que deixou de faltar',
+    (dia6.fechaOMesCom ?? 0) - (dia4.fechaOMesCom ?? 0),
+    dia4.linhas[0]!.estimado - dia6.linhas[0]!.estimado,
+  );
+  igual(
+    'e o saldo em conta mais o que resta do mes',
+    dia6.fechaOMesCom,
+    dia6.carteira.saldoEmConta + dia6.linhas[0]!.sobra,
+  );
+
+  // Principio 0: sem conta de dinheiro nao ha saldo de onde partir, e prever o
+  // fechamento seria devolver a mesma sobra parcial com outro nome.
+  const soRenda = panorama(dados({ rendas: [renda({ valor: 350000 })] }), { meses: 12, agora: T(2026, 10, 6) });
+  igual('sem conta de dinheiro nao ha fechamento para prever', soRenda.fechaOMesCom, null);
+
+  const soValeECartao = panorama(
+    dados({
+      contas: [conta({ id: 'va10', tipo: 'vale' }), conta({ id: 'cr10', tipo: 'credito' })],
+      rendas: [renda({ valor: 350000 })],
+    }),
+    { meses: 12, agora: T(2026, 10, 6) },
+  );
+  igual('vale e cartao nao sao conta de dinheiro', soValeECartao.fechaOMesCom, null);
+}
+
 // ==================================================== 11. simulador
 
 console.log('\n11. O simulador');
@@ -903,6 +954,25 @@ console.log('\n11. O simulador');
 
   const doLimite = simular(base, { valor: 250000, contaId: 'cartao', parcelas: 10, data: agora, categoria: 'Casa' }, opcoes);
   igual('metade do limite de R$ 5.000 e 0,5', doLimite.usoDoLimite, 0.5);
+
+  // O limite entra no veredito. R$ 6.000 em 12x sao R$ 500 por mes contra um
+  // salario de R$ 3.000: nenhum mes fica negativo, e o veredito dizia "cabe"
+  // para uma compra que a maquininha recusa. A tela mostrava o cartao verde e,
+  // embaixo dele, um aviso vermelho dizendo o contrario.
+  const alemDoLimite = simular(base, { valor: 600000, contaId: 'cartao', parcelas: 12, data: agora, categoria: 'Casa' }, opcoes);
+  igual('acima do limite, nenhum mes fica negativo', alemDoLimite.mesesNegativos.length, 0);
+  igual('faltam R$ 1.000 de limite', alemDoLimite.faltaDeLimite, 100000);
+  igual('e o veredito e estoura: a compra nao passa', alemDoLimite.veredito, 'estoura');
+
+  const noLimite = simular(base, { valor: 500000, contaId: 'cartao', parcelas: 12, data: agora, categoria: 'Casa' }, opcoes);
+  igual('no limite exato nao falta nada', noLimite.faltaDeLimite, 0);
+  igual('e a compra ainda cabe', noLimite.veredito, 'cabe');
+
+  // Limite zero e "nao informado", nao "sem limite nenhum": sem o dado, o
+  // veredito nao pode acusar estouro.
+  const semLimite = dados({ contas: [cc, conta({ id: 'livre', tipo: 'credito', limite: 0 })], rendas: [salario] });
+  const livre = simular(semLimite, { valor: 600000, contaId: 'livre', parcelas: 12, data: agora, categoria: 'Casa' }, opcoes);
+  igual('cartao sem limite informado nao estoura por limite', livre.veredito, 'cabe');
 
   const aVista = simular(base, { valor: 5000, contaId: 'cc', parcelas: 1, data: agora, categoria: 'Mercado' }, opcoes);
   igual('compra a vista nao tem fatura', aVista.competenciaInicial, null);
