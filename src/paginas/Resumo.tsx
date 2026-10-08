@@ -332,6 +332,11 @@ export function Resumo() {
  * nao foi pago, ou seja, dinheiro que continua na conta. Some-lo a sobra era o
  * bug que fazia o mes passado de quem registra pagamento parcial parecer PIOR
  * que o de quem nunca registrou nada.
+ *
+ * O VALE fica fora dos dois lados: a recarga nao e "Entrou" e a compra feita
+ * com ele nao e saida, porque vale nao paga fatura. So o que a conta manda para
+ * ele tem linha na subtracao. A frase no fim do cartao diz para onde foi o
+ * numero que a pessoa esperava ver em "Entrou".
  */
 function RazaoDoCaixa({
   caixa,
@@ -342,7 +347,11 @@ function RazaoDoCaixa({
   ehCorrente: boolean;
   temRenda: boolean;
 }) {
-  const temSaida = caixa.saidasAVista > 0 || caixa.pagamentos > 0 || caixa.descontoEmFolha > 0;
+  const temSaida =
+    caixa.saidasAVista > 0 ||
+    caixa.pagamentos > 0 ||
+    caixa.descontoEmFolha > 0 ||
+    caixa.enviadoAoVale > 0;
   if (!temRenda && !temSaida) return null;
 
   return (
@@ -358,6 +367,9 @@ function RazaoDoCaixa({
         )}
         {caixa.descontoEmFolha > 0 && (
           <Linha sinal="−" rotulo="Descontado em folha" valor={caixa.descontoEmFolha} />
+        )}
+        {caixa.enviadoAoVale > 0 && (
+          <Linha sinal="−" rotulo="Enviado para o vale" valor={caixa.enviadoAoVale} />
         )}
 
         {temRenda && (
@@ -399,6 +411,16 @@ function RazaoDoCaixa({
           <p className="dica">
             Os {formatarReais(caixa.noCredito)} comprados no crédito não aparecem aqui de
             propósito: no mês da compra eles não saíram de conta nenhuma.
+          </p>
+        )}
+
+        {(caixa.entradasNoVale > 0 || caixa.noVale > 0) && (
+          <p className="dica">
+            O vale fica fora desta conta:{' '}
+            {caixa.entradasNoVale > 0 && <>entraram {formatarReais(caixa.entradasNoVale)} nele</>}
+            {caixa.entradasNoVale > 0 && caixa.noVale > 0 && ' e '}
+            {caixa.noVale > 0 && <>{formatarReais(caixa.noVale)} foram gastos com ele</>}. Ele só
+            compra comida, então não paga fatura nem vira dinheiro.
           </p>
         )}
       </section>

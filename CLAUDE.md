@@ -103,6 +103,14 @@ Rode as três antes de dar qualquer mudança por concluída.
 18. **`compartilhado/planos.ts` é a única fonte dos limites de plano.** Nada de
     `if (plano === 'pago')` espalhado. E só a IA é barrada no servidor: o resto
     é porteira de tela, assumido por escrito.
+19. **A sobra do mês é a variação do saldo em conta.** `MesFinanceiro.sobra`
+    tem de bater com o quanto `saldoEmConta` mudou entre o começo do mês e
+    agora — é contra isso que a seção 17b de `teste:contas` a confere, porque a
+    identidade "sobra = soma das parcelas" passava com as parcelas erradas. Daí
+    três regras: o **vale fica fora dos dois lados** (a recarga não é entrada de
+    caixa, a compra no vale não é saída); o que a conta **manda para o vale**
+    sai; e o teto das entradas é **agora**, não o fim do mês. "Caixa" tem uma
+    definição só, `ehDeCaixa`, usada pelo saldo e pela sobra.
 
 ## Convenções
 

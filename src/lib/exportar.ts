@@ -323,12 +323,16 @@ export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void>
    *
    * `A vencer` fica DEPOIS de `Sobrou no mes` porque nao entra na subtracao —
    * ver o comentario de `resumoDoMes`.
+   *
+   * A subtracao que fecha na planilha e: Entrou em conta − Compras a vista −
+   * Pago em faturas − Descontado em folha − Enviado para o vale = Sobrou no mes.
+   * `Entrou no vale` e `No vale` ficam de fora dela, pelo mesmo motivo.
    */
   const abaResumo: Celula[][] = [
     cabecalho([
-      'Mês', 'Entradas', 'Comprei no mês', 'Compras à vista', 'No crédito', 'No vale',
-      'Sem conta', 'Pago em faturas', 'Descontado em folha', 'Sobrou no mês', 'A vencer',
-      'Presumido', 'Adiado em parcelas',
+      'Mês', 'Entrou em conta', 'Entrou no vale', 'Comprei no mês', 'Compras à vista',
+      'No crédito', 'No vale', 'Sem conta', 'Pago em faturas', 'Descontado em folha',
+      'Enviado para o vale', 'Sobrou no mês', 'A vencer', 'Presumido', 'Adiado em parcelas',
     ]),
     ...mesesComMovimento(tudo, agora)
       .slice()
@@ -339,6 +343,7 @@ export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void>
         return [
           { value: new Date(inicio), type: Date, format: 'mm/yyyy' },
           dinheiro(m.entradas),
+          dinheiro(m.entradasNoVale),
           dinheiro(m.comprado),
           dinheiro(m.saidasAVista),
           dinheiro(m.noCredito),
@@ -346,6 +351,7 @@ export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void>
           dinheiro(m.semConta),
           dinheiro(m.pagamentos),
           dinheiro(m.descontoEmFolha),
+          dinheiro(m.enviadoAoVale),
           dinheiro(m.sobra),
           dinheiro(m.aVencer),
           texto(m.presumido ? 'sim' : ''),

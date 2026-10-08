@@ -2,9 +2,13 @@
  * Dinheiro mudando de bolso entre as suas proprias contas.
  *
  * A conta ja estava certa desde a v2 — `saldoDaConta` tira da origem e poe no
- * destino, e o `resumoDoMes` ignora este registro de proposito — mas nao havia
- * tela: o unico lugar do app que criava uma transferencia era o pagamento de
- * fatura. Dava para descrever a regra e nao dava para usa-la.
+ * destino — mas nao havia tela: o unico lugar do app que criava uma
+ * transferencia era o pagamento de fatura. Dava para descrever a regra e nao
+ * dava para usa-la.
+ *
+ * No `resumoDoMes`, transferencia entre contas de dinheiro nao aparece: nao e
+ * gasto nem entrada. A excecao e o que vai para o VALE, que sai do dinheiro que
+ * paga conta e por isso tem linha propria no razao do mes.
  *
  * A tela existe tanto para CRIAR quanto para VER e DESFAZER. Sem a lista, um
  * saque digitado errado ficaria para sempre no saldo, sem nenhum lugar onde

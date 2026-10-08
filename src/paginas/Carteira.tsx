@@ -147,7 +147,12 @@ export function Carteira() {
             onClick={() => navegar('/resumo')}
           >
             Este mês: entraram {formatarReais(mesCorrente.entradas)}, saíram{' '}
-            {formatarReais(mesCorrente.saidasAVista + mesCorrente.pagamentos + mesCorrente.descontoEmFolha)}
+            {formatarReais(
+              mesCorrente.saidasAVista +
+                mesCorrente.pagamentos +
+                mesCorrente.descontoEmFolha +
+                mesCorrente.enviadoAoVale,
+            )}
             , sobra até agora{' '}
             <strong className={mesCorrente.sobra < 0 ? 'valor-ruim' : 'valor-bom'}>
               {formatarReais(mesCorrente.sobra)}

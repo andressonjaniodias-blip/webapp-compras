@@ -197,7 +197,8 @@ function blocoDoCaixa(dados: DadosFinanceiros, mes: string, agora: number): stri
 
   return [
     'SALDO E ENTRADAS',
-    `  entrou no mês: R$ ${reais(fechamento.entradas)}`,
+    `  entrou em conta no mês (sem contar o vale): R$ ${reais(fechamento.entradas)}`,
+    `  recarga do vale no mês (NÃO é dinheiro em conta, fica fora da sobra): R$ ${reais(fechamento.entradasNoVale)}`,
     `  comprado no mês, somando tudo: R$ ${reais(fechamento.comprado)}`,
     `  saiu do caixa no mês (débito/pix/dinheiro): R$ ${reais(fechamento.saidasAVista)}`,
     `  comprado no crédito no mês (vira fatura, NÃO saiu ainda): R$ ${reais(fechamento.noCredito)}`,
@@ -206,10 +207,12 @@ function blocoDoCaixa(dados: DadosFinanceiros, mes: string, agora: number): stri
     `  comprado sem conta definida: R$ ${reais(fechamento.semConta)}`,
     `  faturas e parcelas pagas no mês: R$ ${reais(fechamento.pagamentos)}`,
     `  descontado em folha no mês: R$ ${reais(fechamento.descontoEmFolha)}`,
-    // A sobra e SO CAIXA: entradas menos o que de fato saiu. O `aVencer` vem
-    // depois e de proposito FORA dela, senao a IA repetiria a conta errada que a
-    // tela fazia — ver o comentario de `resumoDoMes`.
-    `  sobrou no mês (entradas menos o que saiu): R$ ${reais(fechamento.sobra)}`,
+    `  transferido da conta para o vale no mês: R$ ${reais(fechamento.enviadoAoVale)}`,
+    // A sobra e SO CAIXA: entradas em conta menos o que de fato saiu dela. O vale
+    // fica fora dos dois lados, e o `aVencer` vem depois e de proposito FORA dela,
+    // senao a IA repetiria a conta errada que a tela fazia — ver o comentario de
+    // `resumoDoMes`.
+    `  sobrou no mês (entrou em conta menos o que saiu dela): R$ ${reais(fechamento.sobra)}`,
     `  vence no mês e ainda NÃO foi pago (não entra na sobra): R$ ${reais(fechamento.aVencer)}`,
     fechamento.presumido
       ? '  ATENÇÃO: alguma competência vencida deste mês foi contada como paga por presunção, sem pagamento registrado.'

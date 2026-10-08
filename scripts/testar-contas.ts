@@ -411,6 +411,13 @@ console.log('\n5b. Transferencia muda de bolso, e nunca e gasto');
   igual('entradas do mes nao mudam', mesCom.entradas, mesSem.entradas);
   igual('saidas a vista nao mudam', mesCom.saidasAVista, mesSem.saidasAVista);
   igual('pagamentos do mes nao mudam', mesCom.pagamentos, mesSem.pagamentos);
+  igual('e nada foi para o vale', mesCom.enviadoAoVale, 0);
+
+  // Mandar para o vale e outra coisa: o dinheiro sai do que paga conta. O mes
+  // precisa enxergar, senao a sobra fica maior que o saldo — ver a secao 17b.
+  const mesVale = resumoDoMes(paraVale, '2026-09', T(2026, 9, 30));
+  igual('corrente para vale aparece no mes', mesVale.enviadoAoVale, 30000);
+  igual('e sai da sobra', mesVale.sobra, mesSem.sobra - 30000);
 
   // A regra, caso a caso.
   igual('corrente para corrente pode', motivoParaNaoTransferir(nu, cx, 100), null);
@@ -1283,15 +1290,18 @@ console.log('\n17. O razao do mes fecha');
 
   // A IDENTIDADE DO RAZAO. Toda linha que a tela desenha esta aqui; se alguem
   // acrescentar um termo a `sobra` sem dar linha a ele no Resumo, isto falha.
+  const vale = conta({ apelido: 'Vale', tipo: 'vale' });
+  const recarga = renda({ contaId: vale.id, valor: 35000 });
   const composto = resumoDoMes(
     dados({
-      contas: [corrente, cartao],
+      contas: [corrente, cartao, vale],
       compras: [
         compra({ data: T(2026, 9, 3), total: 8000, contaId: corrente.id }),
         compra({ data: T(2026, 9, 4), total: 12000, contaId: cartao.id }),
         compra({ data: T(2026, 9, 5), total: 3000 }),
+        compra({ data: T(2026, 9, 6), total: 4000, contaId: vale.id }),
       ],
-      rendas: [salario],
+      rendas: [salario, recarga],
       dividas: [consignado],
       transferencias: [
         transferencia({
@@ -1301,24 +1311,40 @@ console.log('\n17. O razao do mes fecha');
           data: T(2026, 9, 27),
           valor: 5000,
         }),
+        transferencia({
+          origemContaId: corrente.id,
+          alvo: 'conta',
+          alvoId: vale.id,
+          data: T(2026, 9, 8),
+          valor: 2000,
+        }),
       ],
     }),
     '2026-09',
     agora,
   );
 
+  const subtracao = composto.entradas - composto.saidasAVista - composto.pagamentos
+    - composto.descontoEmFolha - composto.enviadoAoVale;
+
   igual(
-    'sobra = entradas - a vista - pagamentos - desconto em folha',
+    'sobra = entradas - a vista - pagamentos - desconto em folha - enviado ao vale',
     composto.sobra,
-    composto.entradas - composto.saidasAVista - composto.pagamentos - composto.descontoEmFolha,
+    subtracao,
   );
 
   conferir(
     'o credito NAO entra na sobra',
-    composto.noCredito > 0 && composto.sobra === composto.entradas - composto.saidasAVista
-      - composto.pagamentos - composto.descontoEmFolha,
+    composto.noCredito > 0 && composto.sobra === subtracao,
     `noCredito ${composto.noCredito}`,
   );
+
+  // O vale fica fora dos DOIS lados: a recarga nao e entrada de caixa e a compra
+  // feita com ele nao e saida de caixa. So o que sai da corrente para ele conta.
+  igual('a recarga do vale nao entra em `entradas`', composto.entradas, 300000);
+  igual('ela tem campo proprio', composto.entradasNoVale, 35000);
+  igual('a compra no vale nao sai do caixa', composto.noVale, 4000);
+  igual('o que a corrente mandou para o vale sai', composto.enviadoAoVale, 2000);
 
   igual(
     'comprado = a vista + credito + vale + sem conta',
@@ -1328,6 +1354,90 @@ console.log('\n17. O razao do mes fecha');
 
   igual('compra sem conta fica fora do caixa, mas dentro do comprado', composto.semConta, 3000);
   igual('e o caixa do mes conta so o que saiu de conta', composto.saidasAVista, 8000);
+}
+
+/*
+ * ================================= 17b. a sobra e a variacao do saldo em conta
+ *
+ * A identidade da secao 17 confere que a sobra e a soma das SUAS parcelas. Ela
+ * nao confere que as parcelas estao certas — e nao estavam. Tres vazamentos, no
+ * mesmo numero, passavam por ela:
+ *
+ *   1. a recarga do vale entrava como receita e a compra no vale nunca saia;
+ *   2. o beneficio que cai na corrente e e transferido para o vale nao saia;
+ *   3. no mes corrente, o salario contava antes de cair.
+ *
+ * O teste abaixo compara a sobra com a unica coisa que ela pode ser: o quanto o
+ * saldo em conta mudou. As contas nascem zeradas no dia 1o, entao o saldo em
+ * conta E a variacao do mes. Os dois jeitos de creditar o vale tem de dar o
+ * mesmo numero, porque descrevem o mesmo mes.
+ */
+console.log('\n17b. A sobra do mes e a variacao do saldo em conta');
+{
+  const cc = conta({ id: 'cc17', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 10, 1, 0) });
+  const va = conta({ id: 'va17', tipo: 'vale', saldoInicial: 0, saldoInicialEm: T(2026, 10, 1, 0) });
+  const salario = renda({ data: T(2026, 6, 5, 8), valor: 350000, contaId: cc.id });
+  const beneficio = renda({ data: T(2026, 6, 1, 8), valor: 35000 });
+  const compras = [
+    compra({ data: T(2026, 10, 2), total: 23000, contaId: va.id }),
+    compra({ data: T(2026, 10, 3), total: 14750, contaId: cc.id }),
+  ];
+
+  // Caminho 1: a recarga e uma entrada que cai direto no vale.
+  const direto = dados({
+    contas: [cc, va],
+    compras,
+    rendas: [salario, { ...beneficio, contaId: va.id }],
+  });
+
+  // Caminho 2: o beneficio cai na corrente e e transferido para o vale no dia 6.
+  const transferido = dados({
+    contas: [cc, va],
+    compras,
+    rendas: [salario, { ...beneficio, contaId: cc.id }],
+    transferencias: [
+      transferencia({ origemContaId: cc.id, alvo: 'conta', alvoId: va.id, data: T(2026, 10, 6), valor: 35000 }),
+    ],
+  });
+
+  const antesDoSalario = T(2026, 10, 4, 18);
+  const fimDoMes = T(2026, 10, 31, 18);
+
+  for (const [caminho, d] of [['recarga direto no vale', direto], ['beneficio transferido', transferido]] as const) {
+    for (const [quando, agora] of [['antes do salario', antesDoSalario], ['no fim do mes', fimDoMes]] as const) {
+      igual(
+        `${caminho}, ${quando}: sobra = saldo em conta`,
+        resumoDoMes(d, '2026-10', agora).sobra,
+        calcularCarteira(d, agora).saldoEmConta,
+      );
+    }
+  }
+
+  const mesDireto = resumoDoMes(direto, '2026-10', fimDoMes);
+  const mesTransferido = resumoDoMes(transferido, '2026-10', fimDoMes);
+
+  igual('os dois caminhos dao a mesma sobra', mesDireto.sobra, mesTransferido.sobra);
+  igual('e ela e o salario menos a compra a vista', mesDireto.sobra, 350000 - 14750);
+
+  igual('direto: so o salario e entrada de caixa', mesDireto.entradas, 350000);
+  igual('direto: a recarga aparece como entrada no vale', mesDireto.entradasNoVale, 35000);
+  igual('direto: nada foi enviado ao vale', mesDireto.enviadoAoVale, 0);
+
+  igual('transferido: salario e beneficio entram no caixa', mesTransferido.entradas, 385000);
+  igual('transferido: e o beneficio sai para o vale', mesTransferido.enviadoAoVale, 35000);
+  igual('transferido: nenhuma entrada caiu direto no vale', mesTransferido.entradasNoVale, 0);
+
+  // O teto e `agora`: o que ainda vai cair neste mes nao entrou em conta nenhuma.
+  const cedo = resumoDoMes(direto, '2026-10', antesDoSalario);
+  igual('no dia 4 o salario do dia 5 ainda nao entrou', cedo.entradas, 0);
+  igual('mas a recarga do dia 1o ja caiu no vale', cedo.entradasNoVale, 35000);
+
+  // E transferencia com data depois de `agora` tambem nao saiu ainda.
+  igual(
+    'no dia 4 a transferencia do dia 6 ainda nao saiu',
+    resumoDoMes(transferido, '2026-10', antesDoSalario).enviadoAoVale,
+    0,
+  );
 }
 
 console.log('');if (falhas > 0) {

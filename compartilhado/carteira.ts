@@ -319,6 +319,18 @@ export function acharConta(
   return contas.find((conta) => conta.id === id && naoExcluido(conta));
 }
 
+/**
+ * Dinheiro que paga conta: corrente e espécie. Vale so compra comida e credito
+ * nao tem saldo.
+ *
+ * E a fronteira de `saldoEmConta` e da sobra do mes. As duas usam ESTA funcao,
+ * porque a sobra e a variacao daquele saldo — duas definicoes de "caixa"
+ * divergiriam em silencio, que foi como o vale inflou a sobra.
+ */
+export function ehDeCaixa(conta: Conta | undefined): boolean {
+  return conta !== undefined && (conta.tipo === 'corrente' || conta.tipo === 'dinheiro');
+}
+
 export interface SaldoConta {
   conta: Conta;
   /** Centavos disponiveis agora. */
@@ -538,7 +550,7 @@ export function calcularCarteira(dados: DadosFinanceiros, agora: number): Cartei
   const lista = compromissos(dados, agora);
 
   const saldoEmConta = contas
-    .filter((s) => s.conta.tipo === 'corrente' || s.conta.tipo === 'dinheiro')
+    .filter((s) => ehDeCaixa(s.conta))
     .reduce((soma, s) => soma + s.saldo, 0);
 
   const saldoEmVales = contas
@@ -611,7 +623,13 @@ export function entradasSemConta(
 
 export interface MesFinanceiro {
   mes: string;
+  /**
+   * O que ja caiu em conta de dinheiro no mes. Fica de fora a recarga do vale
+   * (`entradasNoVale`) e o que ainda vai cair depois de `agora`.
+   */
   entradas: number;
+  /** O que caiu direto num vale. Fora da sobra: vale nao paga fatura. */
+  entradasNoVale: number;
   /** Saiu da conta na data: debito, pix, espécie. */
   saidasAVista: number;
   /** Foi comprado no credito e vira fatura depois. Nao saiu do caixa ainda. */
@@ -622,12 +640,20 @@ export interface MesFinanceiro {
   /** Consignado retido na folha no mes. Sai da conta sem virar `Transferencia`. */
   descontoEmFolha: number;
   /**
+   * Transferido de conta de dinheiro para um vale. Nao e gasto, mas saiu do
+   * dinheiro que paga conta — e por isso entra na sobra.
+   */
+  enviadoAoVale: number;
+  /**
    * O que vence no mes e ainda nao foi pago.
    *
    * FICA FORA DA SOBRA, de proposito — ver o comentario de `resumoDoMes`.
    */
   aVencer: number;
-  /** `entradas - saidasAVista - pagamentos - descontoEmFolha`. Só caixa. */
+  /**
+   * `entradas - saidasAVista - pagamentos - descontoEmFolha - enviadoAoVale`.
+   * Só caixa: e o quanto o saldo em conta mudou no mes.
+   */
   sobra: number;
   /** Quanto do gasto do mes virou parcela de meses seguintes. */
   adiadoEmParcelas: number;
@@ -667,6 +693,25 @@ export interface MesFinanceiro {
  * O DESCONTO EM FOLHA entra na sobra porque ele sai da conta de verdade, sem
  * virar `Transferencia`: `entradas` e o salario BRUTO (invariante 17), entao sem
  * subtrair o consignado a sobra do mes saia inflada todo mes, em silencio.
+ *
+ * A SOBRA E A VARIACAO DO SALDO EM CONTA, e e contra ele que ela e testada
+ * (secao 17b de `teste:contas`). A identidade "sobra = soma das parcelas" passava
+ * com as parcelas erradas, e tres vazamentos atravessaram por ela:
+ *
+ *   recarga cadastrada como entrada no vale -> contava como receita, e a compra
+ *                                              no vale nunca saia
+ *   beneficio que cai na corrente e e        -> a transferencia nao saia: muda de
+ *   transferido para o vale                     bolso, mas para FORA do caixa
+ *   salario que ainda vai cair neste mes     -> ja contava na "sobra ate agora"
+ *
+ * Por isso o VALE fica fora dos dois lados, como ja fica fora de `saldoEmConta`:
+ * a recarga vai para `entradasNoVale`, a compra para `noVale`, e so o que a
+ * conta de dinheiro manda para ele (`enviadoAoVale`) entra na subtracao. Os dois
+ * jeitos de creditar o vale descrevem o mesmo mes e dao a mesma sobra.
+ *
+ * E por isso o teto de entradas e transferencias e `agora`, o mesmo do desconto
+ * em folha. Compras e pagamentos NAO sao cortados em `agora`: `comprado` precisa
+ * continuar batendo com `resumirMes`, e lançamento com data futura e raro.
  */
 export function resumoDoMes(dados: DadosFinanceiros, mes: string, agora: number): MesFinanceiro {
   const { inicio, fim } = intervaloDoMes(mes);
@@ -715,21 +760,42 @@ export function resumoDoMes(dados: DadosFinanceiros, mes: string, agora: number)
   const aVencer = ciclosDoMes.reduce((soma, ciclo) => soma + ciclo.restante, 0);
   const presumido = ciclosDoMes.some((ciclo) => ciclo.presumido);
 
-  const entradas = entradasEntre(dados.rendas, inicio, fim);
-  // O teto e o menor entre o fim do mes e agora: consignado que ainda vai ser
-  // retido neste mes nao saiu da conta ainda.
-  const descontoEmFolha = descontosEmFolhaNoPeriodo(dados, inicio, Math.min(fim, agora), agora);
+  // O teto e o menor entre o fim do mes e agora: salario que ainda vai cair,
+  // consignado que ainda vai ser retido e transferencia com data futura nao
+  // mexeram em conta nenhuma ainda.
+  const ate = Math.min(fim, agora);
+
+  const entradasNoVale = dados.contas
+    .filter((conta) => naoExcluido(conta) && conta.tipo === 'vale')
+    .reduce((soma, conta) => soma + entradasEntre(dados.rendas, inicio, ate, conta.id), 0);
+  const entradas = entradasEntre(dados.rendas, inicio, ate) - entradasNoVale;
+
+  const enviadoAoVale = dados.transferencias
+    .filter(
+      (t) =>
+        naoExcluido(t) &&
+        t.alvo === 'conta' &&
+        t.data >= inicio &&
+        t.data <= ate &&
+        ehDeCaixa(acharConta(dados.contas, t.origemContaId)) &&
+        acharConta(dados.contas, t.alvoId)?.tipo === 'vale',
+    )
+    .reduce((soma, t) => soma + t.valor, 0);
+
+  const descontoEmFolha = descontosEmFolhaNoPeriodo(dados, inicio, ate, agora);
 
   return {
     mes,
     entradas,
+    entradasNoVale,
     saidasAVista,
     noCredito,
     noVale,
     pagamentos,
     descontoEmFolha,
+    enviadoAoVale,
     aVencer,
-    sobra: entradas - saidasAVista - pagamentos - descontoEmFolha,
+    sobra: entradas - saidasAVista - pagamentos - descontoEmFolha - enviadoAoVale,
     adiadoEmParcelas: adiado,
     comprado: saidasAVista + noCredito + noVale + semConta,
     semConta,
