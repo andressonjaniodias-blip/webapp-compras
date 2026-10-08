@@ -13,7 +13,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { SeletorChips } from '../componentes/SeletorChips';
@@ -39,10 +39,21 @@ import { useApp } from '../estado';
 
 export function Rendas() {
   const navegar = useNavigate();
+  const local = useLocation();
+  const [params] = useSearchParams();
   const { atualizarPendentes } = useApp();
   const rendas = useLiveQuery(listarRendas, [], undefined);
   const contas = useLiveQuery(listarContas, [], []);
-  const [editando, setEditando] = useState<string | null>(null);
+  // A aba Receitas da tela inicial chega aqui com `?editar=<id>` e o formulario
+  // ja aberto: tocar numa entrada e querer mexer nela, nao ver a lista de novo.
+  const [editando, setEditando] = useState<string | null>(params.get('editar'));
+
+  // Voltar devolve para ONDE a pessoa estava (a Carteira ou a aba Receitas).
+  // Sem historico — recarregou a pagina, abriu o atalho —, a Carteira.
+  function voltar() {
+    if (local.key === 'default') navegar('/carteira');
+    else navegar(-1);
+  }
 
   async function nova() {
     const id = await criarRenda({ origem: ORIGENS_RENDA[0], periodicidade: 'mensal' });
@@ -57,7 +68,7 @@ export function Rendas() {
     <div className="app">
       <header className="topo">
         <div className="topo-linha">
-          <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/carteira')}>
+          <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
             ‹
           </button>
           <h1>Entradas</h1>
