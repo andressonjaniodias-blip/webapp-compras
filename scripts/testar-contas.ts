@@ -20,6 +20,7 @@ import {
   calcularCarteira,
   compromissos,
   faturasDoCartao,
+  lancamentosDeRenda,
   ocorrenciasDeRenda,
   resumoDoMes,
   saldoDaConta,
@@ -642,6 +643,49 @@ console.log('\n7. Aumento de salario, sem buraco e sem mes dobrado');
 
   const unica = renda({ data: T(2026, 3, 10), valor: 50000, periodicidade: 'unica' });
   igual('renda unica cai uma vez so', ocorrenciasDeRenda(unica, T(2027, 12, 31)).length, 1);
+}
+
+// ============================================ 7b. a lista de lancamentos
+
+console.log('\n7b. Lancamentos de entrada: a lista por data, nao o cadastro');
+{
+  const antiga = renda({ id: 'antiga', data: T(2026, 1, 5), valor: 300000, encerradoEm: T(2026, 6, 30, 23) });
+  const nova = renda({ id: 'nova', data: T(2026, 7, 5), valor: 340000 });
+  const extra = renda({ id: 'extra', data: T(2026, 3, 10), valor: 50000, periodicidade: 'unica' });
+  const apagada = { ...renda({ id: 'apagada', data: T(2026, 2, 1) }), excluidoEm: 1 };
+
+  const lista = lancamentosDeRenda([antiga, nova, extra, apagada], T(2026, 9, 30));
+
+  // jan-jun da antiga (6) + jul-set da nova (3) + o extra (1)
+  igual('uma linha por data em que caiu', lista.length, 10);
+  igual('a excluida nao aparece', lista.some((l) => l.renda.id === 'apagada'), false);
+  igual(
+    'do mais recente para o mais antigo',
+    lista.every((l, i) => i === 0 || lista[i - 1]!.quando >= l.quando),
+    true,
+  );
+  igual('o primeiro e o de setembro, da renda nova', lista[0]?.renda.id, 'nova');
+  igual(
+    'cada mes tem um lancamento so, sem dobrar a virada',
+    lista.filter((l) => chaveDoMes(l.quando) === '2026-07' && l.renda.periodicidade === 'mensal').length,
+    1,
+  );
+  igual(
+    'janeiro ainda mostra o valor antigo',
+    lista.find((l) => chaveDoMes(l.quando) === '2026-01')?.renda.valor,
+    300000,
+  );
+  igual(
+    'julho ja mostra o valor novo',
+    lista.find((l) => chaveDoMes(l.quando) === '2026-07')?.renda.valor,
+    340000,
+  );
+  igual(
+    'as chaves sao todas distintas',
+    new Set(lista.map((l) => l.chave)).size,
+    lista.length,
+  );
+  igual('sem renda nao ha lancamento', lancamentosDeRenda([], T(2026, 9, 30)).length, 0);
 }
 
 // ================================================= 8. saldo e compra solta
