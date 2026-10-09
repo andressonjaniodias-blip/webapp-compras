@@ -1,12 +1,24 @@
 /**
- * As compras, da mais recente para a mais antiga, com o botao de nova compra
- * fixo no rodape, ao alcance do polegar.
+ * As compras, um mes por vez, com o botao de nova compra fixo no rodape, ao
+ * alcance do polegar.
+ *
+ * UM MES POR VEZ porque a lista inteira, com todos os meses um depois do outro,
+ * vira em um ano uma rolagem sem fim. O navegador e o mesmo do Resumo, e o mes
+ * escolhido vive na URL: abrir uma compra e voltar devolve a pessoa ao mesmo mes.
  *
  * Esta tela tem dois papeis. Quem nao tem lado financeiro (modo simples, ou
  * ninguem cadastrou conta nem entrada) a ve como TELA INICIAL, exatamente como
  * sempre foi — e o que o Principio 0 pede. Quem tem, ve o painel na tela
  * inicial (`Painel.tsx`) e chega aqui pelo cartao "Compras", em `/compras`,
  * onde ela ganha o "‹" de voltar. O que decide e a prop `inicio`.
+ *
+ * AS PARCELAS DE EMPRESTIMO APARECEM NA LISTA, entre as compras, na data em que
+ * saem da conta, com a situacao por extenso ("descontada em 05/10"). Sem isso nao
+ * havia lugar onde se visse, parcela a parcela, se o emprestimo ja foi
+ * descontado. Sao linhas INFORMATIVAS: nao sao compra e nao somam em total
+ * nenhum — a parcela ja e contada como pagamento e como desconto em folha
+ * (invariantes 10, 17 e 19). So aparecem fora do modo simples e havendo
+ * emprestimo cadastrado.
  *
  * Criar uma compra leva direto para a tela de edicao. Nao ha etapa de
  * confirmacao nem status de "aberta": no mercado, o caminho entre pegar o
@@ -31,11 +43,16 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { criarCompra, listarCompras } from '../dados/compras';
 import type { CompraLocal } from '../dados/banco';
 import { useFinanceiro } from '../dados/financeiro';
+import { extratoDeDividas, type ParcelaDeDivida } from '../../compartilhado/carteira';
 import { formatarReais } from '../lib/dinheiro';
-import { chaveMes, formatarData, nomeMes } from '../lib/datas';
+import { chaveMes, formatarData, mesesDaLista, nomeMes } from '../lib/datas';
+import { resumirMes } from '../lib/resumo';
+import { textoDaParcela } from '../lib/situacaoParcela';
+import { useMesDaUrl } from '../lib/useMesDaUrl';
 import { useVoltar } from '../lib/useVoltar';
 import { useApp } from '../estado';
 import { BarraSituacao } from '../componentes/BarraSituacao';
+import { NavegadorDeMes } from '../componentes/NavegadorDeMes';
 
 export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
   const navegar = useNavigate();
@@ -44,6 +61,21 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
   const compras = useLiveQuery(listarCompras, [], undefined);
   const financeiro = useFinanceiro();
 
+  const agora = Date.now();
+  const extrato: ParcelaDeDivida[] =
+    !financeiro.modoSimples && financeiro.temDividas
+      ? extratoDeDividas(financeiro.dados, agora)
+      : [];
+
+  const meses = mesesDaLista(
+    [
+      ...(compras ?? []).map((c) => chaveMes(c.data)),
+      ...extrato.map((p) => chaveMes(p.quando)),
+    ],
+    agora,
+  );
+  const [mes, escolherMes] = useMesDaUrl(meses);
+
   const apelidos = new Map(financeiro.dados.contas.map((c) => [c.id, c.apelido]));
 
   async function nova() {
@@ -51,6 +83,9 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
     await atualizarPendentes();
     navegar('/compra/' + id);
   }
+
+  const comprasDoMes = (compras ?? []).filter((c) => chaveMes(c.data) === mes);
+  const parcelasDoMes = extrato.filter((p) => chaveMes(p.quando) === mes);
 
   return (
     <div className="app">
@@ -101,18 +136,28 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
 
       {compras === undefined && <p className="carregando">Carregando…</p>}
 
-      {compras !== undefined && compras.length === 0 && (
-        <p className="vazio">
-          Nenhuma compra ainda.
-          <br />
-          Toque em <strong>Nova compra</strong> para registrar a primeira.
-        </p>
-      )}
+      {compras !== undefined && (
+        <>
+          <NavegadorDeMes meses={meses} mes={mes} onChange={escolherMes} />
 
-      {compras !== undefined && compras.length > 0 && (
-        <ul className="lista">
-          {linhas(compras, apelidos, (id) => navegar('/compra/' + id))}
-        </ul>
+          {/* O "Comprei" do Resumo: a mesma conta, sem o emprestimo. */}
+          <div className="mes-total">
+            <span>Comprei em {nomeMes(mes).split(' ')[0]}</span>
+            <span>{formatarReais(resumirMes(compras, mes).total)}</span>
+          </div>
+
+          {comprasDoMes.length === 0 && parcelasDoMes.length === 0 && (
+            <p className="vazio">
+              Nenhuma compra em {nomeMes(mes).split(' ')[0]}.
+              <br />
+              Toque em <strong>Nova compra</strong> para registrar.
+            </p>
+          )}
+
+          <ul className="lista">
+            {linhas(comprasDoMes, parcelasDoMes, apelidos, navegar)}
+          </ul>
+        </>
       )}
 
       <div className="rodape">
@@ -125,52 +170,71 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
 }
 
 /**
- * Insere um cabeçalho quando o mes muda. Sem isso, uma lista longa vira um
- * borrao de datas e nao da para achar "aquela compra de julho".
+ * As compras e as parcelas de emprestimo do mes, juntas, da mais recente para a
+ * mais antiga.
  */
 function linhas(
   compras: readonly CompraLocal[],
+  parcelas: readonly ParcelaDeDivida[],
   apelidos: ReadonlyMap<string, string>,
-  abrir: (id: string) => void,
+  navegar: (destino: string) => void,
 ) {
-  const saida: React.ReactNode[] = [];
-  let mesAnterior = '';
+  const itens: { quando: number; no: React.ReactNode }[] = [];
 
   for (const compra of compras) {
-    const mes = chaveMes(compra.data);
-    if (mes !== mesAnterior) {
-      mesAnterior = mes;
-      saida.push(
-        <li key={'mes-' + mes}>
-          <h2 className="secao-titulo">{nomeMes(mes)}</h2>
-        </li>,
-      );
-    }
-
     const conta = compra.contaId ? apelidos.get(compra.contaId) : undefined;
     const vezes = compra.parcelas ?? 1;
 
-    saida.push(
-      <li key={compra.id}>
-        <button type="button" className="compra" onClick={() => abrir(compra.id)}>
-          <div className="compra-corpo">
-            <div className="compra-titulo">
-              {compra.descricao || compra.categoria}
+    itens.push({
+      quando: compra.data,
+      no: (
+        <li key={compra.id}>
+          <button type="button" className="compra" onClick={() => navegar('/compra/' + compra.id)}>
+            <div className="compra-corpo">
+              <div className="compra-titulo">
+                {compra.descricao || compra.categoria}
+              </div>
+              <div className="compra-meta">
+                {formatarData(compra.data)} · {conta ?? compra.formaPagamento}
+                {vezes > 1 && ` · ${vezes}x`}
+                {compra.qtdItens > 0
+                  ? ` · ${compra.qtdItens} ${compra.qtdItens === 1 ? 'item' : 'itens'}`
+                  : ' · sem itens'}
+                {compra.pendente === 1 && ' · não sincronizada'}
+              </div>
             </div>
-            <div className="compra-meta">
-              {formatarData(compra.data)} · {conta ?? compra.formaPagamento}
-              {vezes > 1 && ` · ${vezes}x`}
-              {compra.qtdItens > 0
-                ? ` · ${compra.qtdItens} ${compra.qtdItens === 1 ? 'item' : 'itens'}`
-                : ' · sem itens'}
-              {compra.pendente === 1 && ' · não sincronizada'}
-            </div>
-          </div>
-          <span className="compra-valor">{formatarReais(compra.total)}</span>
-        </button>
-      </li>,
-    );
+            <span className="compra-valor">{formatarReais(compra.total)}</span>
+          </button>
+        </li>
+      ),
+    });
   }
 
-  return saida;
+  for (const parcela of parcelas) {
+    itens.push({
+      quando: parcela.quando,
+      no: (
+        <li key={'divida-' + parcela.dividaId + parcela.competencia}>
+          <button
+            type="button"
+            className="compra"
+            onClick={() => navegar(`/parcela/${parcela.dividaId}/${parcela.competencia}`)}
+          >
+            <div className="compra-corpo">
+              <div className="compra-titulo">
+                {parcela.descricao || 'Empréstimo'}
+                <span className="selo selo-emprestimo">empréstimo</span>
+              </div>
+              <div className={'compra-meta' + (parcela.situacao === 'em_aberto' ? ' valor-ruim' : '')}>
+                parcela {parcela.indice} de {parcela.de} · {textoDaParcela(parcela)}
+              </div>
+            </div>
+            <span className="compra-valor">{formatarReais(parcela.valor)}</span>
+          </button>
+        </li>
+      ),
+    });
+  }
+
+  return itens.sort((a, b) => b.quando - a.quando).map((item) => item.no);
 }

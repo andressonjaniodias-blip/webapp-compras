@@ -48,10 +48,17 @@ import type { ItemLocal } from '../dados/banco';
 import { formatarReais } from '../lib/dinheiro';
 import { deInputDataHora, formatarData, nomeMes, paraInputDataHora } from '../lib/datas';
 import { useApp } from '../estado';
+import { useVoltar } from '../lib/useVoltar';
 
 export function EditarCompra() {
   const { id = '' } = useParams();
+  // "‹" e "Concluir" devolvem para ONDE a pessoa estava (a lista de compras, no mesmo
+  // mes, ou o painel se a compra nasceu la), e nao sempre para a tela inicial.
   const navegar = useNavigate();
+  const voltar = useVoltar('/');
+  // Marca a saida por exclusao: sem ela, o `Navigate` abaixo ("a compra sumiu")
+  // dispara junto com o voltar e leva para o painel.
+  const saindo = useRef(false);
   const { atualizarPendentes } = useApp();
   const financeiro = useFinanceiro();
 
@@ -134,7 +141,7 @@ export function EditarCompra() {
     );
   }
 
-  if (compra === null) return <Navigate to="/" replace />;
+  if (compra === null) return saindo.current ? null : <Navigate to="/" replace />;
 
   const temItens = itens.length > 0;
   const vezes = compra.parcelas ?? 1;
@@ -163,16 +170,17 @@ export function EditarCompra() {
       'Excluir esta compra e todos os itens dela? Isso some também dos outros aparelhos.',
     );
     if (!certeza) return;
+    saindo.current = true;
     await excluirCompra(id);
     await atualizarPendentes();
-    navegar('/', { replace: true });
+    voltar();
   }
 
   return (
     <div className="app">
       <header className="topo">
         <div className="topo-linha">
-          <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/')}>
+          <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
             ‹
           </button>
           <h1>Compra</h1>
@@ -369,7 +377,7 @@ export function EditarCompra() {
       {emEdicao === null && <FormItem onSalvar={salvarNovoItem} categoria={compra.categoria} />}
 
       <div className="rodape">
-        <button type="button" className="botao botao-primario" onClick={() => navegar('/')}>
+        <button type="button" className="botao botao-primario" onClick={voltar}>
           Concluir
         </button>
       </div>

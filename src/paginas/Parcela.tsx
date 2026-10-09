@@ -6,15 +6,22 @@
  * E o pagamento que tira o dinheiro da conta, e o vinculo com `alvo: 'divida'` e
  * a competencia que impede o app de contar isso como gasto novo.
  *
- * Divida com desconto em folha nao chega aqui: ela e considerada paga na data do
- * salario e nao pede registro nenhum. Esta tela existe para a outra metade, a que
- * voce paga por conta e pode esquecer.
+ * Divida com desconto em folha e considerada paga na data do salario e nao pede
+ * registro nenhum, mas a lista de compras mostra a parcela dela e abre esta tela:
+ * ela diz "descontada em ..." e deixa registrar por cima, porque o registro vale
+ * mais que a presuncao. A metade principal e a que voce paga por conta e pode
+ * esquecer.
  */
 
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
-import { acharConta, pagamentosDe, presumidoAteDaDivida } from '../../compartilhado/carteira';
+import {
+  acharConta,
+  dataDoDescontoEmFolha,
+  pagamentosDe,
+  presumidoAteDaDivida,
+} from '../../compartilhado/carteira';
 import { parcelasDaDivida, porCompetencia } from '../../compartilhado/parcelamento';
 import { podeEnviar } from '../../compartilhado/tipos';
 import { excluirTransferencia, registrarTransferencia } from '../dados/financas';
@@ -22,10 +29,11 @@ import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
 import { formatarData, nomeMes } from '../lib/datas';
 import { useApp } from '../estado';
+import { useVoltar } from '../lib/useVoltar';
 
 export function Parcela() {
   const { dividaId = '', competencia = '' } = useParams();
-  const navegar = useNavigate();
+  const voltar = useVoltar('/carteira');
   const { atualizarPendentes } = useApp();
   const { dados, carregando } = useFinanceiro();
 
@@ -81,7 +89,7 @@ export function Parcela() {
     <div className="app">
       <header className="topo">
         <div className="topo-linha">
-          <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/carteira')}>
+          <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
             ‹
           </button>
           <h1>{divida.descricao || 'Empréstimo'}</h1>
@@ -98,10 +106,25 @@ export function Parcela() {
               : `vence em ${formatarData(ciclo.vencimentoEm)}`}
           </p>
         )}
-        {ciclo?.presumido && (
+        {ciclo?.presumido && divida.descontoEmFolha && (
+          <p className="dica">
+            Descontada em folha em{' '}
+            {formatarData(dataDoDescontoEmFolha(divida, dados, competencia, agora))}, o dia em que o
+            salário cai. Se não foi assim, registre o pagamento abaixo — o registro vale mais que
+            a presunção.
+          </p>
+        )}
+        {ciclo?.presumido && !divida.descontoEmFolha && (
           <p className="dica">
             Considerada paga no vencimento, porque a competência já passou. Se não foi assim,
             registre o pagamento abaixo — o registro vale mais que a presunção.
+          </p>
+        )}
+        {ciclo && !ciclo.presumido && divida.descontoEmFolha && ciclo.pago === 0 && (
+          <p className="dica">
+            Desconto em folha: sai da conta em{' '}
+            {formatarData(dataDoDescontoEmFolha(divida, dados, competencia, agora))}, o dia em que o
+            salário cai.
           </p>
         )}
         {ciclo && ciclo.pago > 0 && (

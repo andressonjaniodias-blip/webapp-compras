@@ -27,10 +27,12 @@ import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
 import { formatarData, nomeMes } from '../lib/datas';
 import { useApp } from '../estado';
+import { useVoltar } from '../lib/useVoltar';
 
 export function Fatura() {
   const { contaId = '', competencia = '' } = useParams();
   const navegar = useNavigate();
+  const voltar = useVoltar('/carteira');
   const { atualizarPendentes } = useApp();
   const { dados, carregando } = useFinanceiro();
 
@@ -82,7 +84,7 @@ export function Fatura() {
     <div className="app">
       <header className="topo">
         <div className="topo-linha">
-          <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/carteira')}>
+          <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
             ‹
           </button>
           <h1>{conta.apelido}</h1>

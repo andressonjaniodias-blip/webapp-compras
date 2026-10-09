@@ -32,6 +32,7 @@ import { formatarReais } from '../lib/dinheiro';
 import { formatarData, mesAtual, nomeMes } from '../lib/datas';
 import { pedirDicas, type Dicas } from '../dados/api';
 import { useApp } from '../estado';
+import { NavegadorDeMes } from '../componentes/NavegadorDeMes';
 import { useVoltar } from '../lib/useVoltar';
 
 /** Quantas categorias aparecem antes do resto virar "outras". */
@@ -72,7 +73,6 @@ export function Resumo() {
   const meses = comMovimento.includes(corrente) ? comMovimento : [corrente, ...comMovimento];
 
   const mes = mesEscolhido !== null && meses.includes(mesEscolhido) ? mesEscolhido : meses[0]!;
-  const indice = meses.indexOf(mes);
   const ehCorrente = mes === corrente;
 
   // A media dos meses completos, para comparar com o mes tipico. O `null`
@@ -86,9 +86,7 @@ export function Resumo() {
 
   const caixa = financeiro.mostrar ? resumoDoMes(financeiro.dados, mes, agora) : null;
 
-  function irPara(novo: number) {
-    const destino = meses[novo];
-    if (destino === undefined) return;
+  function escolherMes(destino: string) {
     setMesEscolhido(destino);
     setDicas(null);
     setErroDicas(null);
@@ -118,27 +116,7 @@ export function Resumo() {
         </div>
       </header>
 
-      <div className="mes-navegador">
-        <button
-          type="button"
-          className="botao-icone"
-          aria-label="Mês anterior"
-          disabled={indice >= meses.length - 1}
-          onClick={() => irPara(indice + 1)}
-        >
-          ‹
-        </button>
-        <strong>{nomeMes(mes)}</strong>
-        <button
-          type="button"
-          className="botao-icone"
-          aria-label="Mês seguinte"
-          disabled={indice <= 0}
-          onClick={() => irPara(indice - 1)}
-        >
-          ›
-        </button>
-      </div>
+      <NavegadorDeMes meses={meses} mes={mes} onChange={escolherMes} />
 
       {caixa && (
         <RazaoDoCaixa caixa={caixa} ehCorrente={ehCorrente} temRenda={financeiro.temRenda} />

@@ -21,10 +21,11 @@ import {
   compromissos,
   dataDoDescontoEmFolha,
   diaDoSalario,
-  entradaEmDestaque,
+  extratoDeDividas,
   faturasDoCartao,
   materializarRenda,
   ocorrenciasDeRenda,
+  parcelasQuitadasDaCompetencia,
   resumoDoMes,
   saldoDaConta,
   type DadosFinanceiros,
@@ -67,6 +68,7 @@ import {
   formatarData,
   formatarDataCurta,
   formatarDataHora,
+  mesesDaLista,
   nomeMes,
   paraInputData,
 } from '../src/lib/datas';
@@ -839,7 +841,7 @@ console.log('\n7c. A previsao: o salario cair nao da degrau');
   igual('recarga de vale nao vira entrada prevista', comVale.linhas[1]!.entradas, 350000);
 }
 
-// ==================== 7d. o dia do salario sem regra, e a entrada em destaque
+// ==================== 7d. o dia do salario sem regra
 
 console.log('\n7d. O dia do salario vem das entradas, e o cartao mostra a ultima e a proxima');
 {
@@ -909,26 +911,6 @@ console.log('\n7d. O dia do salario vem das entradas, e o cartao mostra a ultima
     new Date(dataDoDescontoEmFolha(consignado, dados({ contas: [cc] }), '2026-10', AGORA)).getDate(),
     17,
   );
-
-  // ---------------------------------------------------------- em destaque
-  const sal = renda({ id: 'sal', data: T(2026, 10, 5), valor: 350000 });
-  const ale = renda({ id: 'ale', data: T(2026, 10, 25), valor: 80000 });
-  const dia8 = entradaEmDestaque([sal, ale], AGORA);
-  igual('no dia 8 a ultima e o salario do dia 5', dia8.ultima?.id, 'sal');
-  igual('e a proxima e a do dia 25', dia8.proxima?.id, 'ale');
-  const dia30 = entradaEmDestaque([sal, ale], T(2026, 10, 30));
-  igual('no dia 30 a ultima e a do dia 25', dia30.ultima?.id, 'ale');
-  igual('e nao ha proxima', dia30.proxima, null);
-  const soFutura = entradaEmDestaque([ale], T(2026, 10, 1));
-  igual('so futura: nao ha ultima', soFutura.ultima, null);
-  igual('so futura: a proxima e ela', soFutura.proxima?.id, 'ale');
-  igual(
-    'a proxima e a mais proxima, nao a mais distante',
-    entradaEmDestaque([ale, renda({ id: 'dez', data: T(2026, 12, 5) }), sal], AGORA).proxima?.id,
-    'ale',
-  );
-  igual('excluida nao conta', entradaEmDestaque([{ ...sal, excluidoEm: 1 }], AGORA).ultima, null);
-  igual('sem nada nao ha nenhuma das duas', entradaEmDestaque([], AGORA).proxima, null);
 }
 
 // ================================================= 8. saldo e compra solta
@@ -1813,6 +1795,113 @@ console.log('\n17b. A sobra do mes e a variacao do saldo em conta');
     'no dia 4 a transferencia do dia 6 ainda nao saiu',
     resumoDoMes(transferido, '2026-10', antesDoSalario).enviadoAoVale,
     0,
+  );
+}
+
+// ============================== 18. emprestimo na lista de compras, mes a mes
+
+/*
+ * "Ja foi descontado?" era uma pergunta sem resposta em lugar nenhum: o consignado
+ * e presumido pago no dia do salario e a Carteira o esconde. O extrato e uma linha
+ * por parcela, com a situacao dita por extenso — e e SO LEITURA: parte dos ciclos
+ * que a Carteira ja usa e nunca soma em compra.
+ */
+console.log('\n18. Emprestimo na lista de compras: a situacao de cada parcela');
+{
+  const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 1, 1) });
+  const salario = salarios('2026-07', '2026-10', 5, 350000, { contaId: 'cc' });
+
+  const consignado = divida({
+    id: 'cons', descricao: 'Consignado', valorTotal: 600000, parcelas: 12,
+    primeiraEm: T(2026, 7, 17), descontoEmFolha: true, contaId: 'cc',
+  });
+  const moto = divida({
+    id: 'moto', descricao: 'Moto', valorTotal: 360000, parcelas: 36,
+    primeiraEm: T(2026, 8, 10), contaId: 'cc',
+  });
+  const velha = divida({
+    id: 'velha', descricao: 'Antigo', valorTotal: 120000, parcelas: 12,
+    primeiraEm: T(2025, 10, 20), contaId: 'cc',
+  });
+  const pagamentos = [
+    transferencia({ origemContaId: 'cc', alvo: 'divida', alvoId: 'moto', competencia: '2026-08', data: T(2026, 8, 12), valor: 10000 }),
+    transferencia({ origemContaId: 'cc', alvo: 'divida', alvoId: 'moto', competencia: '2026-09', data: T(2026, 9, 11), valor: 4000 }),
+  ];
+  const base = dados({
+    contas: [cc], rendas: salario, dividas: [consignado, moto, velha], transferencias: pagamentos,
+  });
+
+  const achar = (extrato: ReturnType<typeof extratoDeDividas>, dividaId: string, competencia: string) =>
+    extrato.find((p) => p.dividaId === dividaId && p.competencia === competencia);
+
+  const dia8 = extratoDeDividas(base, T(2026, 10, 8));
+  igual('consignado: o dia do salario ja passou, entao esta descontada', achar(dia8, 'cons', '2026-10')?.situacao, 'descontada');
+  igual('e a data da linha e a do desconto', new Date(achar(dia8, 'cons', '2026-10')!.quando).getDate(), 5);
+  igual('as de meses passados tambem', achar(dia8, 'cons', '2026-08')?.situacao, 'descontada');
+  igual('a linha sabe qual parcela e', `${achar(dia8, 'cons', '2026-10')!.indice}/${achar(dia8, 'cons', '2026-10')!.de}`, '4/12');
+
+  const dia3 = extratoDeDividas(base, T(2026, 10, 3));
+  igual('antes do dia do salario, ainda vai ser descontada', achar(dia3, 'cons', '2026-10')?.situacao, 'a_descontar');
+  igual('e a de setembro ja foi', achar(dia3, 'cons', '2026-09')?.situacao, 'descontada');
+
+  igual('paga por registro: paga', achar(dia8, 'moto', '2026-08')?.situacao, 'paga');
+  igual('e a data da linha e a do pagamento', new Date(achar(dia8, 'moto', '2026-08')!.quando).getDate(), 12);
+  igual('pagamento menor que a parcela: parcial', achar(dia8, 'moto', '2026-09')?.situacao, 'parcial');
+  igual('e diz quanto falta', achar(dia8, 'moto', '2026-09')?.restante, 6000);
+  igual('sem pagamento e antes do vencimento: a vencer', achar(dia8, 'moto', '2026-10')?.situacao, 'a_vencer');
+  igual(
+    'vencimento do mes passado e sem pagamento: em aberto',
+    achar(extratoDeDividas(base, T(2026, 10, 15)), 'moto', '2026-10')?.situacao,
+    'em_aberto',
+  );
+  igual('competencia passada sem registro nenhum: presumida', achar(dia8, 'velha', '2026-08')?.situacao, 'presumida');
+
+  conferir('nao ha parcela futura', dia8.every((p) => p.competencia <= '2026-10'));
+  igual('o consignado nao tem linha de novembro', achar(dia8, 'cons', '2026-11'), undefined);
+  conferir(
+    'do mais recente para o mais antigo',
+    dia8.every((p, i) => i === 0 || dia8[i - 1]!.quando >= p.quando),
+  );
+
+  const semConsignado = extratoDeDividas(dados({ ...base, dividas: [{ ...consignado, excluidoEm: 1 }, moto] }), T(2026, 10, 8));
+  igual('divida excluida nao aparece', semConsignado.filter((p) => p.dividaId === 'cons').length, 0);
+
+  const contagem = parcelasQuitadasDaCompetencia(dia8, '2026-10');
+  igual('em outubro ha 2 parcelas', contagem.total, 2);
+  igual('e so a do consignado esta quitada', contagem.quitadas, 1);
+
+  // NADA SOMA EM COMPRA: o extrato e leitura, e o que e gasto continua o mesmo.
+  const compras = [compra({ data: T(2026, 10, 3), total: 12345, contaId: 'cc' })];
+  const comDividas = resumoDoMes(dados({ ...base, compras }), '2026-10', T(2026, 10, 8));
+  const semDividas = resumoDoMes(dados({ contas: [cc], rendas: salario, compras }), '2026-10', T(2026, 10, 8));
+  igual('o total comprado nao muda com os emprestimos', comDividas.comprado, semDividas.comprado);
+}
+
+// ===================================== 18b. os meses que uma lista oferece
+
+console.log('\n18b. Lista por mes: os meses com algo, e sempre o corrente');
+{
+  const agora = T(2026, 10, 8);
+  igual(
+    'meses com movimento, do mais recente ao mais antigo',
+    mesesDaLista(['2026-08', '2026-10', '2026-06'], agora).join(','),
+    '2026-10,2026-08,2026-06',
+  );
+  igual(
+    'o corrente entra mesmo vazio',
+    mesesDaLista(['2026-08'], agora).join(','),
+    '2026-10,2026-08',
+  );
+  igual('sem nada, so o corrente', mesesDaLista([], agora).join(','), '2026-10');
+  igual(
+    'nao repete o mes',
+    mesesDaLista(['2026-10', '2026-10', '2026-09'], agora).join(','),
+    '2026-10,2026-09',
+  );
+  igual(
+    'mes futuro com lancamento tambem aparece',
+    mesesDaLista(['2026-12'], agora).join(','),
+    '2026-12,2026-10',
   );
 }
 

@@ -68,7 +68,10 @@ Rode as três antes de dar qualquer mudança por concluída.
 10. **Compra no crédito não sai do caixa; a fatura sai.** Pagar a fatura é
     `Transferencia`, e ela nunca conta como gasto novo — o gasto foi contado
     quando a compra foi lançada. Somar os dois é a contagem dupla que o
-    `teste:contas` existe para impedir.
+    `teste:contas` existe para impedir. A parcela de empréstimo aparece na lista
+    de compras (`extratoDeDividas`) só como linha informativa, com a situação dela
+    (descontada, paga, em aberto…): nunca entra em total de compra, porque já é
+    contada como pagamento e como desconto em folha.
 11. **A soma das parcelas é exatamente o total.** R$ 100,00 em 3x são
     33,34 + 33,33 + 33,33; a primeira absorve o resto. Nunca 99,99.
 12. **Entrada é lançamento, não regra.** Não existe mais renda recorrente nem
@@ -154,6 +157,11 @@ Rode as três antes de dar qualquer mudança por concluída.
     que seja verdade. A média inclui extras (13º, reembolso); a tela diz isso.
 
 ## Convenções
+
+- **Lista longa vai por mês, e o mês vai na URL.** Compras e Receitas mostram um
+  mês por vez, com `NavegadorDeMes` (o do Resumo) e `useMesDaUrl`; abrir um item e
+  voltar devolve ao mesmo mês. O "‹" das telas de detalhe usa `useVoltar`, nunca
+  um destino fixo: destino fixo levava ao painel em vez da lista de onde se veio.
 
 - **Data e mês são montados à mão, nunca por `Intl.DateTimeFormat`.** A
   locale pedida só vale se o runtime tiver os dados dela; faltando, ele cai

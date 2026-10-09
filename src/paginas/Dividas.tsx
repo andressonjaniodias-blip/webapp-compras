@@ -21,13 +21,14 @@ import { useState } from 'react';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { CampoNumero } from '../componentes/CampoNumero';
 import { TIPOS_DIVIDA } from '../../compartilhado/constantes';
-import { compromissos } from '../../compartilhado/carteira';
+import { compromissos, extratoDeDividas } from '../../compartilhado/carteira';
 import { valorDaParcela } from '../../compartilhado/parcelamento';
 import { podeEnviar, type Divida } from '../../compartilhado/tipos';
 import { atualizarDivida, criarDivida, excluirDivida } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
-import { deInputDataHora, nomeMes, paraInputDataHora } from '../lib/datas';
+import { chaveMes, deInputDataHora, nomeMes, paraInputDataHora } from '../lib/datas';
+import { textoDaParcela } from '../lib/situacaoParcela';
 import { useApp } from '../estado';
 import { useVoltar } from '../lib/useVoltar';
 
@@ -38,6 +39,12 @@ export function Dividas() {
   const [editando, setEditando] = useState<string | null>(null);
 
   const agora = Date.now();
+  // A situacao da parcela do mes, a mesma que a lista de compras mostra.
+  const parcelaDoMes = new Map(
+    extratoDeDividas(dados, agora)
+      .filter((p) => p.competencia === chaveMes(agora))
+      .map((p) => [p.dividaId, p]),
+  );
   const faltaPorId = new Map(
     compromissos(dados, agora)
       .filter((c) => c.origem === 'divida')
@@ -123,6 +130,11 @@ export function Dividas() {
                       ? ` · sai de ${conta.apelido}`
                       : ''}
                 </div>
+                {parcelaDoMes.get(divida.id) && (
+                  <div className="compra-meta">
+                    {nomeMes(chaveMes(agora)).split(' ')[0]}: {textoDaParcela(parcelaDoMes.get(divida.id)!)}
+                  </div>
+                )}
               </button>
             </li>
           );

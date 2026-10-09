@@ -120,3 +120,16 @@ export function intervaloDoMes(chave: string): { inicio: number; fim: number } {
 export function mesAtual(): string {
   return chaveMes(Date.now());
 }
+
+/**
+ * Os meses que uma lista por mes oferece: os que tem algo e, sempre, o corrente,
+ * do mais recente ao mais antigo.
+ *
+ * O corrente entra mesmo vazio porque e o mes em que a pessoa esta: sem ele nao
+ * haveria como chegar ao mes de hoje numa lista que ainda nao tem nada nele.
+ */
+export function mesesDaLista(chaves: Iterable<string>, agora: number): string[] {
+  const todos = new Set(chaves);
+  todos.add(chaveMes(agora));
+  return [...todos].sort().reverse();
+}

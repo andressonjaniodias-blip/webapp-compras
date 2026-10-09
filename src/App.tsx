@@ -12,6 +12,7 @@ import { Carteira } from './paginas/Carteira';
 import { Contas } from './paginas/Contas';
 import { Dividas } from './paginas/Dividas';
 import { EditarCompra } from './paginas/EditarCompra';
+import { EditarReceita } from './paginas/EditarReceita';
 import { Entrar } from './paginas/Entrar';
 import { Fatura } from './paginas/Fatura';
 import { Inicio } from './paginas/Inicio';
@@ -42,6 +43,7 @@ function Conteudo() {
       <Route path="/" element={<Inicio />} />
       <Route path="/compras" element={<ListaCompras />} />
       <Route path="/receitas" element={<Receitas />} />
+      <Route path="/receita/:id" element={<EditarReceita />} />
       <Route path="/compra/:id" element={<EditarCompra />} />
       <Route path="/resumo" element={<Resumo />} />
       <Route path="/ajustes" element={<Ajustes />} />

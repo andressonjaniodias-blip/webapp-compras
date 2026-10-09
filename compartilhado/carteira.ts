@@ -195,30 +195,6 @@ export function entradasDeCaixaEntre(
 }
 
 /**
- * Das entradas lancadas, a ultima que ja caiu e a proxima que ainda vai cair.
- *
- * E o que cabe num cartao pequeno: "o salario ja caiu? quando cai o proximo?".
- * `proxima` e a MAIS PROXIMA no futuro, nao a mais distante. Uma entrada e um
- * lancamento com data: nao ha regra para expandir.
- */
-export function entradaEmDestaque(
-  rendas: readonly Renda[],
-  agora: number,
-): { ultima: Renda | null; proxima: Renda | null } {
-  let ultima: Renda | null = null;
-  let proxima: Renda | null = null;
-  for (const renda of rendas) {
-    if (!naoExcluido(renda)) continue;
-    if (renda.data <= agora) {
-      if (ultima === null || renda.data > ultima.data) ultima = renda;
-    } else if (proxima === null || renda.data < proxima.data) {
-      proxima = renda;
-    }
-  }
-  return { ultima, proxima };
-}
-
-/**
  * Transforma uma entrada RECORRENTE legada em lancamentos unicos, um por data
  * que ja caiu. So le a regra e devolve linhas; quem grava e a porta
  * (`materializarRendasRecorrentes`, em `financas.ts`), que carimba e poe a
@@ -633,6 +609,126 @@ export function compromissos(dados: DadosFinanceiros, agora: number): Compromiss
 
   void agora;
   return saida;
+}
+
+/**
+ * Em que pe esta uma parcela de emprestimo, dita para quem pergunta "ja foi
+ * descontada?".
+ *
+ * `descontada`/`a_descontar` so existem para desconto em folha (nao ha registro
+ * a esperar: o dinheiro sai no dia do salario). O resto e a parcela que voce paga
+ * por conta, e ai o que vale e o registro — ou a presuncao, marcada como tal.
+ */
+export type SituacaoDaParcela =
+  | 'descontada'
+  | 'a_descontar'
+  | 'paga'
+  | 'parcial'
+  | 'presumida'
+  | 'a_vencer'
+  | 'em_aberto';
+
+export interface ParcelaDeDivida {
+  dividaId: string;
+  descricao: string;
+  competencia: string;
+  indice: number;
+  de: number;
+  /** Centavos da parcela. */
+  valor: number;
+  /** Quando a parcela saiu da conta, ou sai: desconto, ultimo pagamento ou vencimento. */
+  quando: number;
+  situacao: SituacaoDaParcela;
+  /** Centavos ja pagos por registro. */
+  pago: number;
+  /** Centavos que ainda faltam, depois da presuncao. */
+  restante: number;
+}
+
+/**
+ * Uma linha por parcela de emprestimo, ate o mes corrente, da mais recente para a
+ * mais antiga.
+ *
+ * Existe para a lista de compras poder mostrar o emprestimo: sem ela, nao ha
+ * lugar nenhum onde se veja, parcela a parcela, o que ja foi descontado. E so
+ * LEITURA. Parte dos ciclos de `compromissos()` — com a presuncao ja aplicada —
+ * e nao recalcula nada, para nunca divergir da Carteira; e nunca soma em compra:
+ * a parcela ja e contada em `pagamentos` e `descontoEmFolha` (invariantes 10, 17
+ * e 19).
+ *
+ * Nao inclui competencia futura: a lista e do que aconteceu, e a Carteira ja
+ * projeta o que vem.
+ */
+export function extratoDeDividas(dados: DadosFinanceiros, agora: number): ParcelaDeDivida[] {
+  const mesAtual = chaveDoMes(agora);
+  const saida: ParcelaDeDivida[] = [];
+
+  for (const compromisso of compromissos(dados, agora)) {
+    if (compromisso.origem !== 'divida') continue;
+    const divida = dados.dividas.find((d) => d.id === compromisso.id);
+    if (!divida) continue;
+    const pagamentos = pagamentosDe(dados.transferencias, 'divida', divida.id);
+
+    for (const ciclo of compromisso.ciclos) {
+      const parcela = ciclo.parcelas[0];
+      if (!parcela || ciclo.competencia > mesAtual) continue;
+
+      const doCiclo = pagamentos.filter((p) => p.competencia === ciclo.competencia);
+      const ultimoPagamento = doCiclo.reduce<number | null>(
+        (maior, p) => (maior === null || p.data > maior ? p.data : maior),
+        null,
+      );
+      const desconto = divida.descontoEmFolha
+        ? dataDoDescontoEmFolha(divida, dados, ciclo.competencia, agora)
+        : null;
+
+      let situacao: SituacaoDaParcela;
+      let quando: number;
+      if (ciclo.pago > 0) {
+        situacao = ciclo.restante > 0 ? 'parcial' : 'paga';
+        quando = ultimoPagamento ?? ciclo.vencimentoEm;
+      } else if (desconto !== null) {
+        situacao = ciclo.presumido ? 'descontada' : 'a_descontar';
+        quando = desconto;
+      } else if (ciclo.presumido) {
+        situacao = 'presumida';
+        quando = ciclo.vencimentoEm;
+      } else {
+        situacao = ciclo.vencimentoEm >= agora ? 'a_vencer' : 'em_aberto';
+        quando = ciclo.vencimentoEm;
+      }
+
+      saida.push({
+        dividaId: divida.id,
+        descricao: divida.descricao,
+        competencia: ciclo.competencia,
+        indice: parcela.indice,
+        de: parcela.de,
+        valor: ciclo.total,
+        quando,
+        situacao,
+        pago: ciclo.pago,
+        restante: ciclo.restante,
+      });
+    }
+  }
+
+  return saida.sort((a, b) => b.quando - a.quando);
+}
+
+/**
+ * Das parcelas de uma competencia, quantas ja estao quitadas (descontadas, pagas
+ * ou presumidas). E a contagem do cartao Emprestimos do painel.
+ */
+export function parcelasQuitadasDaCompetencia(
+  extrato: readonly ParcelaDeDivida[],
+  competencia: string,
+): { total: number; quitadas: number } {
+  const doMes = extrato.filter((p) => p.competencia === competencia);
+  const quitadas = doMes.filter(
+    (p) => p.situacao === 'descontada' || p.situacao === 'paga' || p.situacao === 'presumida',
+  ).length;
+  return { total: doMes.length, quitadas };
 }
 
 /** Tudo que ainda falta pagar, somado. */

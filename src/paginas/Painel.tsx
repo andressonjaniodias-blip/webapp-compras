@@ -16,6 +16,10 @@
  * `saldoEmConta`, que deixa o vale de fora; somar `contas[].saldo` a mao o
  * inflaria.
  *
+ * CADA CARTAO MOSTRA UM TOTAL, e nenhuma lista de itens: o ultimo valor e mais
+ * alguns, seguidos de "ver todos", nao respondiam "quanto?". As listas vivem nas
+ * paginas, por mes.
+ *
  * PRINCÍPIO 0: o painel so existe quando ja ha conta ou entrada (`mostrar`);
  * antes disso a tela inicial e a lista de compras de sempre. Cartao sem dado
  * mostra uma frase neutra e nenhum numero, e continua tocavel: e a porta para
@@ -32,14 +36,15 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { criarCompra, listarCompras } from '../dados/compras';
 import type { EstadoFinanceiro } from '../dados/financeiro';
 import {
-  entradaEmDestaque,
+  extratoDeDividas,
+  parcelasQuitadasDaCompetencia,
   resumoDoMes,
   terminaEm,
 } from '../../compartilhado/carteira';
 import { limitesDo } from '../../compartilhado/planos';
-import { panorama, planejarMeta, temBaseDeEntrada } from '../../compartilhado/previsao';
+import { panorama, temBaseDeEntrada } from '../../compartilhado/previsao';
 import { formatarReais } from '../lib/dinheiro';
-import { chaveMes, formatarDataCurta, nomeMes } from '../lib/datas';
+import { chaveMes, nomeMes } from '../lib/datas';
 import { resumirMes } from '../lib/resumo';
 import { useApp } from '../estado';
 import { BarraSituacao } from '../componentes/BarraSituacao';
@@ -71,22 +76,19 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
     navegar('/compra/' + id);
   }
 
-  // ---- Compras: o "Comprei no mes" do Resumo, e as duas mais recentes.
+  // ---- Compras: o "Comprei no mes" do Resumo.
   const totalDoMes = compras ? resumirMes(compras, mes).total : null;
-  const recentes = (compras ?? []).slice(0, 2);
 
-  // ---- Receitas: a ultima que caiu e a proxima que vai cair.
-  const { ultima, proxima } = entradaEmDestaque(dados.rendas, agora);
-
-  // ---- Emprestimos: o bloco "Empréstimos" da Carteira, somado.
+  // ---- Emprestimos: o bloco "Empréstimos" da Carteira, somado, e quantas
+  // parcelas do mes ja foram descontadas ou pagas.
   const dividas = visao.carteira.compromissos.filter((c) => c.origem === 'divida');
   const restanteDasDividas = dividas.reduce((soma, c) => soma + c.falta.restante, 0);
   const ateQuando = terminaEm(dividas);
+  const parcelasDoMes = parcelasQuitadasDaCompetencia(extratoDeDividas(dados, agora), mes);
 
-  // ---- Metas: a primeira, com o progresso que a pagina de Metas calcula.
-  const sobraMensal = visao.linhas.find((l) => !l.parcial)?.sobra ?? visao.sobraDoMes;
-  const meta = dados.metas[0];
-  const planoDaMeta = meta ? planejarMeta(meta, sobraMensal, agora) : null;
+  // ---- Metas: o total guardado e o total do alvo, de todas elas.
+  const guardado = dados.metas.reduce((soma, m) => soma + m.guardado, 0);
+  const alvo = dados.metas.reduce((soma, m) => soma + m.valorAlvo, 0);
 
   return (
     <div className="app">
@@ -114,65 +116,32 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
       />
 
       <div className="painel">
-        <Cartao titulo="Compras" ver="Ver todas" onAbrir={() => navegar('/compras')}>
-          {totalDoMes === null ? null : recentes.length === 0 ? (
-            <span className="dica">Nenhuma compra ainda.</span>
-          ) : (
-            <>
-              <span className="painel-numero">{formatarReais(totalDoMes)}</span>
-              <span className="dica">em {soOMes(mes)}</span>
-              {recentes.map((compra) => (
-                <span className="painel-linha" key={compra.id}>
-                  <span>{compra.descricao || compra.categoria}</span>
-                  <span>{formatarReais(compra.total)}</span>
-                </span>
-              ))}
-            </>
-          )}
+        <Cartao titulo="Compras" onAbrir={() => navegar('/compras')}>
+          <span className="dica">em {soOMes(mes)}</span>
+          <span className="painel-numero">
+            {totalDoMes === null ? '' : formatarReais(totalDoMes)}
+          </span>
         </Cartao>
 
-        <Cartao titulo="Receitas" ver="Ver todas" onAbrir={() => navegar('/receitas')}>
-          {ultima === null && proxima === null ? (
-            <span className="dica">Nenhuma entrada ainda.</span>
-          ) : (
-            <>
-              {ultima && (
-                <>
-                  <span className="painel-numero">{formatarReais(ultima.valor)}</span>
-                  <span className="dica">
-                    {ultima.origem || 'Entrada'} · caiu {formatarDataCurta(ultima.data)}
-                  </span>
-                </>
-              )}
-              {proxima && (
-                <span className="dica">
-                  próxima: {proxima.origem || 'Entrada'}, {formatarDataCurta(proxima.data)}
-                </span>
-              )}
-            </>
-          )}
+        <Cartao titulo="Receitas" onAbrir={() => navegar('/receitas')}>
+          <span className="dica">entraram em {soOMes(mes)}</span>
+          <span className="painel-numero">{formatarReais(mesCorrente.entradas)}</span>
         </Cartao>
 
-        <Cartao titulo="Este mês" ver="Ver resumo" onAbrir={() => navegar('/resumo')}>
+        <Cartao titulo="Este mês" onAbrir={() => navegar('/resumo')}>
           {temRenda ? (
             <>
               <span className="dica">sobra até agora</span>
               <span className={'painel-numero ' + (mesCorrente.sobra < 0 ? 'valor-ruim' : 'valor-bom')}>
                 {formatarReais(mesCorrente.sobra)}
               </span>
-              <span className="dica">entraram {formatarReais(mesCorrente.entradas)}</span>
             </>
           ) : (
-            <>
-              <span className="dica">comprei em {soOMes(mes)}</span>
-              <span className="painel-numero">
-                {totalDoMes === null ? '' : formatarReais(totalDoMes)}
-              </span>
-            </>
+            <span className="dica">Lance as entradas para ver a sobra do mês.</span>
           )}
         </Cartao>
 
-        <Cartao titulo="Carteira" ver="Abrir" onAbrir={() => navegar('/carteira')}>
+        <Cartao titulo="Carteira" onAbrir={() => navegar('/carteira')}>
           {temContas ? (
             <>
               <span className="dica">em conta</span>
@@ -186,34 +155,36 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
           )}
         </Cartao>
 
-        <Cartao titulo="Empréstimos" ver="Abrir" onAbrir={() => navegar('/dividas')}>
+        <Cartao titulo="Empréstimos" onAbrir={() => navegar('/dividas')}>
           {temDividas ? (
             <>
               <span className="dica">ainda falta pagar</span>
               <span className="painel-numero">{formatarReais(restanteDasDividas)}</span>
               {ateQuando && <span className="dica">até {nomeMes(ateQuando)}</span>}
+              {parcelasDoMes.total > 0 && (
+                <span className="dica">
+                  parcelas de {soOMes(mes)}: {parcelasDoMes.quitadas} de {parcelasDoMes.total}{' '}
+                  {parcelasDoMes.total === 1 ? 'quitada' : 'quitadas'}
+                </span>
+              )}
             </>
           ) : (
             <span className="dica">Nenhum empréstimo.</span>
           )}
         </Cartao>
 
-        <Cartao titulo="Metas" ver="Abrir" onAbrir={() => navegar('/metas')}>
-          {meta && planoDaMeta ? (
+        <Cartao titulo="Metas" onAbrir={() => navegar('/metas')}>
+          {dados.metas.length > 0 ? (
             <>
-              <span className="painel-linha">
-                <span>{meta.descricao || 'Sem nome'}</span>
-              </span>
+              <span className="dica">guardado</span>
+              <span className="painel-numero">{formatarReais(guardado)}</span>
               <span className="barra">
                 <span
                   className="barra-preenchida"
-                  style={{ width: planoDaMeta.progresso * 100 + '%', display: 'block' }}
+                  style={{ width: (alvo > 0 ? Math.min(1, guardado / alvo) * 100 : 0) + '%', display: 'block' }}
                 />
               </span>
-              <span className="dica">
-                {formatarReais(meta.guardado)} de {formatarReais(meta.valorAlvo)}
-                {dados.metas.length > 1 && ` · +${dados.metas.length - 1}`}
-              </span>
+              <span className="dica">de {formatarReais(alvo)}</span>
             </>
           ) : (
             <span className="dica">Nenhuma meta ainda.</span>
@@ -290,16 +261,14 @@ function Destaque({
 
 /**
  * Um cartao inteiro e UM botao: o alvo e grande e nao ha botao dentro de botao.
- * A linha "Ver todas ›" so avisa que o cartao leva a algum lugar.
+ * A linha "Abrir ›" so avisa que o cartao leva a algum lugar.
  */
 function Cartao({
   titulo,
-  ver,
   onAbrir,
   children,
 }: {
   titulo: string;
-  ver: string;
   onAbrir: () => void;
   children: ReactNode;
 }) {
@@ -307,7 +276,7 @@ function Cartao({
     <button type="button" className="painel-cartao" onClick={onAbrir}>
       <span className="painel-titulo">{titulo}</span>
       <span className="painel-corpo">{children}</span>
-      <span className="painel-ver">{ver} ›</span>
+      <span className="painel-ver">Abrir ›</span>
     </button>
   );
 }
