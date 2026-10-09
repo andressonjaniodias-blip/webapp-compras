@@ -25,6 +25,7 @@ import {
   faturasDoCartao,
   materializarRenda,
   ocorrenciasDeRenda,
+  gastoComDividasNoMes,
   parcelasQuitadasDaCompetencia,
   resumoDoMes,
   saldoDaConta,
@@ -1871,6 +1872,18 @@ console.log('\n18. Emprestimo na lista de compras: a situacao de cada parcela');
   const contagem = parcelasQuitadasDaCompetencia(dia8, '2026-10');
   igual('em outubro ha 2 parcelas', contagem.total, 2);
   igual('e so a do consignado esta quitada', contagem.quitadas, 1);
+
+  // O total de gastos com emprestimos: so o que ja saiu da conta, no mes da data.
+  igual('outubro: so o consignado, que ja foi descontado', gastoComDividasNoMes(dia8, '2026-10').total, 50000);
+  igual('e a moto a vencer fica de fora', gastoComDividasNoMes(dia8, '2026-10').parcelas, 1);
+  igual('antes do dia 5, nem o consignado entra', gastoComDividasNoMes(dia3, '2026-10').total, 0);
+  igual(
+    'agosto: consignado, moto paga e a velha presumida',
+    gastoComDividasNoMes(dia8, '2026-08').total,
+    50000 + 10000 + 10000,
+  );
+  igual('setembro: da parcial entra so o que foi pago', gastoComDividasNoMes(dia8, '2026-09').total, 50000 + 4000 + 10000);
+  igual('mes sem parcela nenhuma', gastoComDividasNoMes(dia8, '2025-05').total, 0);
 
   // NADA SOMA EM COMPRA: o extrato e leitura, e o que e gasto continua o mesmo.
   const compras = [compra({ data: T(2026, 10, 3), total: 12345, contaId: 'cc' })];
