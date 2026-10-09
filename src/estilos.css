@@ -1134,6 +1134,11 @@ textarea.entrada {
   color: var(--texto-fraco);
 }
 
+.mes-total-detalhe {
+  margin: -10px 2px 14px;
+  text-align: right;
+}
+
 .mes-total > span:last-child {
   font-family: var(--fonte-valor);
   font-variant-numeric: tabular-nums;
