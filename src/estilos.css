@@ -4,21 +4,27 @@
  * A tela e desenhada para uma mao so, dentro do mercado: alvos de toque
  * grandes, contraste alto e o botao mais usado ao alcance do polegar.
  *
- * DOIS TEMAS, COM OS MESMOS PAPEIS. O app nasceu so escuro. Hoje o tema segue
- * o aparelho e pode ser fixado em Ajustes (`src/lib/tema.ts`). Nenhuma regra
- * abaixo cita cor: cita o PAPEL (`--superficie`, `--estoura-texto`), e os
- * blocos de tokens dizem que cor o papel tem em cada tema. Cor fixa numa regra
- * e exatamente o que quebra no outro tema.
+ * BRUTALISTA, COM A IDEIA DO CUPOM. Concreto de fundo, papel branco de cartao,
+ * contorno preto de 1,5px, raio zero e uma sombra dura de 2px que o toque
+ * "afunda". Estado e preenchimento CHAPADO (verde, amarelo, vermelho) com texto
+ * preto por cima, sempre com a forma e o nome junto. Substitui o visual calmo e
+ * arredondado de 06/10/2026; o porque esta em `decisoes.md`, no cofre.
  *
- * TRES REGRAS DE USO, com os pares medidos (texto 4,5:1, grafico 3:1):
+ * DOIS TEMAS, COM OS MESMOS PAPEIS. O tema segue o aparelho e pode ser fixado
+ * em Ajustes (`src/lib/tema.ts`). Nenhuma regra abaixo cita cor: cita o PAPEL
+ * (`--superficie`, `--estoura-texto`), e os blocos de tokens dizem que cor o
+ * papel tem em cada tema. Cor fixa numa regra e exatamente o que quebra no
+ * outro tema.
  *
- * - Cor de BARRA nao e cor de TEXTO. `--cabe`, `--aperta` e `--estoura` pintam
- *   barra, borda e icone. Texto usa a variante `-texto`, e fundo tingido usa a
- *   `-suave`.
- * - Sobre `--acento` so vai `--sobre-acento`. No claro o botao e um verde
- *   fundo justamente para o texto branco passar; o verde vivo e `--marca`, e
- *   ele nunca recebe texto.
- * - Estado nunca e so cor: leva o nome junto (Cabe, Aperta, Estoura).
+ * QUATRO REGRAS DE USO, com os pares medidos (texto 4,5:1, grafico 3:1):
+ *
+ * - `-suave` de estado e preenchimento vivo, nao tinta clara. Texto sobre ele e
+ *   SEMPRE `--sobre-estado` (preto nos dois temas). Nunca `--texto`, que no
+ *   escuro e claro e sumiria no amarelo.
+ * - `-texto` de estado e a cor de texto sobre superficie neutra (cartao, fundo).
+ *   Cor de barra (`--cabe`, `--aperta`, `--estoura`) pinta barra, borda e icone.
+ * - Sobre `--acento` so vai `--sobre-acento`.
+ * - Estado nunca e so cor: leva a forma e o nome junto (Cabe, Aperta, Estoura).
  *
  * O bloco escuro aparece DUAS vezes, e os dois tem de ficar iguais: um vale
  * quando o aparelho esta no escuro e ninguem escolheu nada, o outro quando o
@@ -33,11 +39,11 @@
  * baixados para o aparelho de quem escreve em portugues.
  */
 @font-face {
-  font-family: 'Outfit';
+  font-family: 'Archivo';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2') format('woff2');
+  src: url('@fontsource-variable/archivo/files/archivo-latin-wght-normal.woff2') format('woff2');
 }
 
 @font-face {
@@ -51,40 +57,57 @@
 :root {
   color-scheme: light;
 
-  --fundo: #f7faf7;
+  --fundo: #d6d6d2;
   --superficie: #ffffff;
-  --superficie-alta: #edf4ef;
-  --borda: #d5e0d9;
-  --borda-forte: #7a8f83;
-  --cartao-borda: transparent;
-  --texto: #10231a;
-  --texto-fraco: #4f6358;
+  --superficie-alta: #ecece8;
+  --tinta: #0a0a0a;
+  --borda: #0a0a0a;
+  --borda-forte: #0a0a0a;
+  --cartao-borda: #0a0a0a;
+  --texto: #0a0a0a;
+  --texto-fraco: #3a3a38;
 
-  --acento: #0e7a43;
-  --sobre-acento: #ffffff;
-  --acento-texto: #0e7a43;
-  --acento-suave: #ddf3e3;
-  --marca: #15b95c;
+  --acento: #2bd96b;
+  --sobre-acento: #0a0a0a;
+  --acento-texto: #08602f;
+  --acento-suave: #c9f3d8;
+  --marca: #2bd96b;
 
-  --cabe: #12874b;
-  --cabe-texto: #0e7a43;
-  --cabe-suave: #ddf3e3;
-  --aperta: #b45309;
-  --aperta-texto: #8a4b00;
-  --aperta-suave: #fcf3dc;
-  --estoura: #c62828;
-  --estoura-texto: #b3261e;
-  --estoura-suave: #fbe9e7;
+  /* Graficos: tres series (fixo, variavel, eventual) e cinco fatias de pizza.
+     Cor so separa; quem identifica e o rotulo direto ou a lista ao lado. */
+  --serie-1: #0a0a0a;
+  --serie-2: #2bd96b;
+  --serie-3: #ffd60a;
+  --fatia-1: #0a0a0a;
+  --fatia-2: #2bd96b;
+  --fatia-3: #ffd60a;
+  --fatia-4: #ffffff;
+  --fatia-5: #9a9a95;
 
-  --sombra: 0 1px 2px rgba(16, 35, 26, 0.05), 0 10px 28px rgba(16, 35, 26, 0.07);
-  --sombra-flutuante: 0 12px 28px rgba(16, 35, 26, 0.18);
-  --rodape-fundo: rgba(247, 250, 247, 0.92);
+  /* Estado: preenchimento vivo (`-suave`), texto preto (`--sobre-estado`) e,
+     para texto sobre cartao ou fundo, a variante `-texto`, mais funda. */
+  --sobre-estado: #0a0a0a;
+  --cabe: #2bd96b;
+  --cabe-texto: #08602f;
+  --cabe-suave: #2bd96b;
+  --aperta: #ffd60a;
+  --aperta-texto: #6b4a00;
+  --aperta-suave: #ffd60a;
+  --estoura: #ff4d3d;
+  --estoura-texto: #b00000;
+  --estoura-suave: #ff4d3d;
 
-  --raio: 14px;
-  --raio-cartao: 20px;
+  --sombra: 2px 2px 0 var(--tinta);
+  --sombra-flutuante: 3px 3px 0 var(--tinta);
+  --afunda: 2px;
+  --rodape-fundo: #d6d6d2;
+
+  --bw: 1.5px;
+  --raio: 0;
+  --raio-cartao: 0;
   --toque: 48px;
 
-  --fonte: 'Outfit', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --fonte: 'Archivo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   /* O valor em fonte de largura fixa e a assinatura do cupom: parece impresso. */
   --fonte-valor: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -94,34 +117,43 @@
   :root:not([data-tema='claro']) {
     color-scheme: dark;
 
-    --fundo: #0f1720;
-    --superficie: #182430;
-    --superficie-alta: #223140;
-    --borda: #2c3f52;
-    --borda-forte: #6f879e;
-    --cartao-borda: #2c3f52;
-    --texto: #e8eef4;
-    --texto-fraco: #90a4b8;
+    --fundo: #0a0a0a;
+    --superficie: #161616;
+    --superficie-alta: #232323;
+    --tinta: #f5f5f0;
+    --borda: #f5f5f0;
+    --borda-forte: #f5f5f0;
+    --cartao-borda: #f5f5f0;
+    --texto: #f5f5f0;
+    --texto-fraco: #bdbdb8;
 
-    --acento: #4ade80;
-    --sobre-acento: #06210f;
-    --acento-texto: #4ade80;
-    --acento-suave: #16341f;
-    --marca: #4ade80;
+    --acento: #3be883;
+    --sobre-acento: #0a0a0a;
+    --acento-texto: #3be883;
+    --acento-suave: #123a22;
+    --marca: #3be883;
 
-    --cabe: #4ade80;
-    --cabe-texto: #4ade80;
-    --cabe-suave: #16341f;
-    --aperta: #fbbf24;
-    --aperta-texto: #fbbf24;
-    --aperta-suave: #3a2f12;
-    --estoura: #f87171;
-    --estoura-texto: #fca5a5;
-    --estoura-suave: #3b1a1a;
+    --serie-1: #f5f5f0;
+    --serie-2: #3be883;
+    --serie-3: #ffd60a;
+    --fatia-1: #f5f5f0;
+    --fatia-2: #3be883;
+    --fatia-3: #ffd60a;
+    --fatia-4: #4a4a47;
+    --fatia-5: #9a9a95;
 
-    --sombra: none;
-    --sombra-flutuante: 0 12px 28px rgba(0, 0, 0, 0.45);
-    --rodape-fundo: rgba(15, 23, 32, 0.94);
+    --sobre-estado: #0a0a0a;
+    --cabe: #3be883;
+    --cabe-texto: #3be883;
+    --cabe-suave: #3be883;
+    --aperta: #ffd60a;
+    --aperta-texto: #ffd60a;
+    --aperta-suave: #ffd60a;
+    --estoura: #ff5a4a;
+    --estoura-texto: #ff6b5c;
+    --estoura-suave: #ff5a4a;
+
+    --rodape-fundo: #0a0a0a;
   }
 }
 
@@ -129,34 +161,43 @@
 :root[data-tema='escuro'] {
   color-scheme: dark;
 
-  --fundo: #0f1720;
-  --superficie: #182430;
-  --superficie-alta: #223140;
-  --borda: #2c3f52;
-  --borda-forte: #6f879e;
-  --cartao-borda: #2c3f52;
-  --texto: #e8eef4;
-  --texto-fraco: #90a4b8;
+  --fundo: #0a0a0a;
+  --superficie: #161616;
+  --superficie-alta: #232323;
+  --tinta: #f5f5f0;
+  --borda: #f5f5f0;
+  --borda-forte: #f5f5f0;
+  --cartao-borda: #f5f5f0;
+  --texto: #f5f5f0;
+  --texto-fraco: #bdbdb8;
 
-  --acento: #4ade80;
-  --sobre-acento: #06210f;
-  --acento-texto: #4ade80;
-  --acento-suave: #16341f;
-  --marca: #4ade80;
+  --acento: #3be883;
+  --sobre-acento: #0a0a0a;
+  --acento-texto: #3be883;
+  --acento-suave: #123a22;
+  --marca: #3be883;
 
-  --cabe: #4ade80;
-  --cabe-texto: #4ade80;
-  --cabe-suave: #16341f;
-  --aperta: #fbbf24;
-  --aperta-texto: #fbbf24;
-  --aperta-suave: #3a2f12;
-  --estoura: #f87171;
-  --estoura-texto: #fca5a5;
-  --estoura-suave: #3b1a1a;
+  --serie-1: #f5f5f0;
+  --serie-2: #3be883;
+  --serie-3: #ffd60a;
+  --fatia-1: #f5f5f0;
+  --fatia-2: #3be883;
+  --fatia-3: #ffd60a;
+  --fatia-4: #4a4a47;
+  --fatia-5: #9a9a95;
 
-  --sombra: none;
-  --sombra-flutuante: 0 12px 28px rgba(0, 0, 0, 0.45);
-  --rodape-fundo: rgba(15, 23, 32, 0.94);
+  --sobre-estado: #0a0a0a;
+  --cabe: #3be883;
+  --cabe-texto: #3be883;
+  --cabe-suave: #3be883;
+  --aperta: #ffd60a;
+  --aperta-texto: #ffd60a;
+  --aperta-suave: #ffd60a;
+  --estoura: #ff5a4a;
+  --estoura-texto: #ff6b5c;
+  --estoura-suave: #ff5a4a;
+
+  --rodape-fundo: #0a0a0a;
 }
 
 * {
@@ -176,15 +217,15 @@ body {
 }
 
 /*
- * O foco de teclado, que nao existia: no escuro o contorno padrao do navegador
- * ainda aparecia, no claro ele some contra o branco.
+ * O foco de teclado: contorno de 3px na cor da tinta, afastado 2px da borda do
+ * controle. Verde nao serve aqui — sobre branco o verde vivo mede menos de 2:1.
  */
 button:focus-visible,
 a:focus-visible,
 summary:focus-visible,
 input[type='radio']:focus-visible,
 input[type='checkbox']:focus-visible {
-  outline: 2px solid var(--acento-texto);
+  outline: 3px solid var(--tinta);
   outline-offset: 2px;
 }
 
@@ -200,7 +241,7 @@ input[type='checkbox']:focus-visible {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: linear-gradient(var(--fundo) 70%, transparent);
+  background: var(--fundo);
   padding: calc(12px + env(safe-area-inset-top)) 0 12px;
 }
 
@@ -213,9 +254,10 @@ input[type='checkbox']:focus-visible {
 .topo h1 {
   flex: 1;
   margin: 0;
-  font-size: 1.35rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 
 .botao-icone {
@@ -223,16 +265,19 @@ input[type='checkbox']:focus-visible {
   height: var(--toque);
   display: grid;
   place-items: center;
-  border: 1px solid var(--borda);
+  border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
   background: var(--superficie);
+  box-shadow: var(--sombra);
   color: var(--texto);
   font-size: 1.2rem;
   cursor: pointer;
 }
 
+/* O toque "afunda" o controle: a sombra some e ele desce sobre ela. */
 .botao-icone:active {
-  background: var(--superficie-alta);
+  transform: translate(var(--afunda), var(--afunda));
+  box-shadow: none;
 }
 
 /*
@@ -300,7 +345,7 @@ input[type='checkbox']:focus-visible {
   padding: 14px;
   text-align: left;
   background: var(--superficie);
-  border: 1px solid var(--cartao-borda);
+  border: var(--bw) solid var(--cartao-borda);
   border-radius: var(--raio-cartao);
   box-shadow: var(--sombra);
   color: inherit;
@@ -309,15 +354,15 @@ input[type='checkbox']:focus-visible {
 }
 
 .painel-cartao:active {
-  background: var(--superficie-alta);
+  transform: translate(var(--afunda), var(--afunda));
+  box-shadow: none;
 }
 
 .painel-titulo {
-  font-size: 0.78rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--texto-fraco);
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--texto);
 }
 
 .painel-corpo {
@@ -362,33 +407,32 @@ input[type='checkbox']:focus-visible {
 
 .painel-ver {
   font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--acento-texto);
+  font-weight: 800;
+  color: var(--texto);
 }
 
 /* --------------------------------------------------------------- blocos */
 
 /*
- * A elevacao muda de linguagem com o tema: no claro o cartao e branco com
- * sombra curta e sem contorno; no escuro sombra nao aparece, entao quem separa
- * o cartao do fundo e o contorno. Por isso a borda tem token proprio.
+ * Nos dois temas o cartao tem o mesmo desenho: contorno na cor da tinta e
+ * sombra dura de 2px, que no escuro sai clara. A margem de baixo (14px) deixa
+ * a sombra respirar antes do proximo bloco.
  */
 .cartao {
   background: var(--superficie);
-  border: 1px solid var(--cartao-borda);
+  border: var(--bw) solid var(--cartao-borda);
   border-radius: var(--raio-cartao);
   box-shadow: var(--sombra);
   padding: 16px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .secao-titulo {
-  margin: 22px 0 10px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--texto-fraco);
+  margin: 24px 0 10px;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--texto);
 }
 
 .vazio {
@@ -405,7 +449,7 @@ input[type='checkbox']:focus-visible {
 
 .aviso {
   background: var(--acento-suave);
-  border: 1px solid var(--acento);
+  border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
   padding: 10px 12px;
   margin-bottom: 12px;
@@ -414,14 +458,12 @@ input[type='checkbox']:focus-visible {
 
 .aviso-erro {
   background: var(--estoura-suave);
-  border-color: var(--estoura);
-  color: var(--estoura-texto);
+  color: var(--sobre-estado);
 }
 
 .aviso-atencao {
   background: var(--aperta-suave);
-  border-color: var(--aperta);
-  color: var(--aperta-texto);
+  color: var(--sobre-estado);
 }
 
 /* O link dentro do aviso herda a cor dele: verde sobre ambar nao foi medido. */
@@ -448,9 +490,8 @@ input[type='checkbox']:focus-visible {
   width: 100%;
   min-height: var(--toque);
   padding: 10px 12px;
-  /* `--borda-forte`: o contorno e o que diz "isto e um campo" sobre cartao
-     branco, e a borda fina de divisor mede 1,3:1 ali. */
-  border: 1px solid var(--borda-forte);
+  /* O contorno e o que diz "isto e um campo" sobre o cartao branco. */
+  border: var(--bw) solid var(--borda-forte);
   border-radius: var(--raio);
   background: var(--superficie);
   color: var(--texto);
@@ -459,8 +500,8 @@ input[type='checkbox']:focus-visible {
 }
 
 .entrada:focus {
-  outline: 2px solid var(--acento);
-  outline-offset: -1px;
+  outline: 3px solid var(--tinta);
+  outline-offset: 2px;
 }
 
 /*
@@ -483,22 +524,24 @@ textarea.entrada {
 .botao {
   min-height: var(--toque);
   padding: 0 18px;
-  border: 1px solid var(--borda);
+  border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
   background: var(--superficie-alta);
+  box-shadow: var(--sombra);
   color: var(--texto);
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 800;
   font-family: inherit;
   cursor: pointer;
 }
 
-.botao:active { transform: translateY(1px); }
+.botao:active {
+  transform: translate(var(--afunda), var(--afunda));
+  box-shadow: none;
+}
 
 .botao-primario {
   background: var(--acento);
-  border-color: var(--acento);
-  border-radius: 999px;
   color: var(--sobre-acento);
 }
 
@@ -509,6 +552,7 @@ textarea.entrada {
   background: transparent;
   border-color: var(--borda-forte);
   border-style: dashed;
+  box-shadow: none;
   color: var(--texto-fraco);
   cursor: default;
   transform: none;
@@ -532,11 +576,9 @@ textarea.entrada {
   display: flex;
   gap: 8px;
   justify-content: center;
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   background: var(--rodape-fundo);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  border-top: 1px solid var(--borda);
+  border-top: var(--bw) solid var(--borda);
 }
 
 .rodape > * { flex: 1; max-width: 200px; }
@@ -550,20 +592,19 @@ textarea.entrada {
 .chip {
   min-height: 40px;
   padding: 0 14px;
-  border: 1px solid var(--borda);
-  border-radius: 999px;
+  border: var(--bw) solid var(--borda);
+  border-radius: var(--raio);
   background: var(--superficie);
-  color: var(--texto-fraco);
+  color: var(--texto);
   font-size: 0.92rem;
   font-family: inherit;
   cursor: pointer;
 }
 
 .chip-ativo {
-  background: var(--acento-suave);
-  border-color: var(--acento);
-  color: var(--acento-texto);
-  font-weight: 600;
+  background: var(--acento);
+  color: var(--sobre-acento);
+  font-weight: 800;
 }
 
 /* --------------------------------------------------------------- listas */
@@ -577,19 +618,25 @@ textarea.entrada {
   width: 100%;
   text-align: left;
   background: var(--superficie);
-  border: 1px solid var(--borda);
+  border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
+  box-shadow: var(--sombra);
   padding: 12px 14px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   color: inherit;
   font: inherit;
   cursor: pointer;
 }
 
+.compra:active {
+  transform: translate(var(--afunda), var(--afunda));
+  box-shadow: none;
+}
+
 .compra-corpo { flex: 1; min-width: 0; }
 
 .compra-titulo {
-  font-weight: 600;
+  font-weight: 800;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -632,7 +679,7 @@ textarea.entrada {
 
 .form-item {
   background: var(--superficie-alta);
-  border: 1px solid var(--borda);
+  border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
   padding: 12px;
   margin-top: 12px;
@@ -679,7 +726,7 @@ textarea.entrada {
 .conferencia button {
   background: none;
   border: none;
-  color: var(--acento-texto);
+  color: var(--texto);
   font: inherit;
   text-decoration: underline;
   padding: 0;
@@ -706,7 +753,7 @@ textarea.entrada {
   text-align: left;
   min-height: 44px;
   padding: 8px 12px;
-  border: 1px solid var(--borda);
+  border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
   background: var(--superficie);
   color: var(--texto);
@@ -733,34 +780,10 @@ textarea.entrada {
 }
 
 /*
- * O trilho e uma REGUA TRACEJADA, nao uma faixa. Faixa clara sobre cartao
- * branco mede 1,2:1 e some; a regua em `--borda-forte` passa de 3:1 nos dois
- * temas, e e a mesma linha que vem antes de todo total.
+ * As barras de progresso e de estado sao SVG (`componentes/graficos/`): o trilho
+ * e uma REGUA TRACEJADA, nao uma faixa, e o estilo mora na secao "graficos" mais
+ * abaixo. A `.barra` de CSS puro saiu quando a ultima copia dela foi trocada.
  */
-.barra {
-  position: relative;
-  height: 10px;
-  margin-top: 6px;
-}
-
-.barra::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  border-top: 1.5px dashed var(--borda-forte);
-  transform: translateY(-50%);
-}
-
-.barra-preenchida {
-  position: relative;
-  height: 100%;
-  max-width: 100%;
-  background: var(--acento);
-  border-radius: 5px;
-}
-
 .fatia { margin-bottom: 12px; }
 
 .fatia-linha {
@@ -788,17 +811,18 @@ textarea.entrada {
 
 .selo {
   display: inline-block;
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.75rem;
+  font-weight: 800;
   padding: 2px 8px;
-  border-radius: 999px;
+  border: 1px solid var(--borda);
+  border-radius: 0;
   background: var(--superficie-alta);
-  color: var(--texto-fraco);
+  color: var(--texto);
 }
 
 .selo-pendente {
   background: var(--acento-suave);
-  color: var(--acento-texto);
+  color: var(--texto);
 }
 
 .entrar {
@@ -830,14 +854,19 @@ textarea.entrada {
   margin: 0;
   padding: 6px;
   background: var(--superficie-alta);
-  border: 1px solid var(--borda);
+  border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
   box-shadow: var(--sombra-flutuante);
 }
 
 .sugestao-destacada {
-  border-color: var(--acento);
-  background: var(--acento-suave);
+  background: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.sugestao-destacada .sugestao-preco,
+.sugestao-destacada .sugestao-antes {
+  color: var(--sobre-acento);
 }
 
 .sugestao-antes {
@@ -856,7 +885,7 @@ textarea.entrada {
   min-height: 40px;
   margin-top: 8px;
   padding: 8px 12px;
-  border: 1px solid var(--borda);
+  border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
   background: var(--superficie);
   color: var(--texto);
@@ -881,7 +910,7 @@ textarea.entrada {
 .rolagem {
   overflow-x: auto;
   margin: 12px 0;
-  border: 1px solid var(--borda);
+  border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
   background: var(--superficie);
 }
@@ -902,11 +931,9 @@ textarea.entrada {
 }
 
 .previsao thead th {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--texto-fraco);
-  font-weight: 500;
+  font-size: 0.78rem;
+  color: var(--texto);
+  font-weight: 800;
   background: var(--superficie-alta);
 }
 
@@ -926,6 +953,12 @@ textarea.entrada {
 
 .previsao-apertado {
   background: var(--aperta-suave);
+  color: var(--sobre-estado);
+}
+
+.previsao-apertado th,
+.previsao-apertado td {
+  color: var(--sobre-estado);
 }
 
 .previsao-parcial {
@@ -947,8 +980,7 @@ textarea.entrada {
 
 .selo-plano {
   background: var(--aperta-suave);
-  color: var(--aperta-texto);
-  border: 1px solid var(--aperta);
+  color: var(--sobre-estado);
   margin-right: 6px;
 }
 
@@ -959,37 +991,50 @@ textarea.entrada {
 }
 
 /* Situacao da fatura, de relance. */
-.selo-aberta { background: var(--superficie-alta); color: var(--texto-fraco); }
-.selo-fechada { background: var(--aperta-suave); color: var(--aperta-texto); }
-.selo-paga { background: var(--cabe-suave); color: var(--cabe-texto); }
+.selo-aberta { background: var(--superficie-alta); color: var(--texto); }
+.selo-fechada { background: var(--aperta-suave); color: var(--sobre-estado); }
+.selo-paga { background: var(--cabe-suave); color: var(--sobre-estado); }
 
 /* O veredito do simulador — a resposta em uma linha. */
 .veredito {
   border-radius: var(--raio-cartao);
   padding: 16px 18px;
-  margin: 12px 0;
-  border: 1px solid var(--borda);
+  margin: 14px 0;
+  border: var(--bw) solid var(--borda);
+  box-shadow: var(--sombra);
+  color: var(--sobre-estado);
 }
 
 .veredito strong {
   display: block;
-  font-size: 1.3rem;
-  line-height: 1.2;
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
 }
 
 .veredito p {
   margin: 4px 0 0;
   font-size: 0.9rem;
-  color: var(--texto);
+  color: var(--sobre-estado);
 }
 
-/* Os tres estados: borda na cor de barra, nome na cor de texto, fundo suave. */
-.veredito-cabe { border-color: var(--cabe); background: var(--cabe-suave); }
-.veredito-cabe strong { color: var(--cabe-texto); }
-.veredito-aperta { border-color: var(--aperta); background: var(--aperta-suave); }
-.veredito-aperta strong { color: var(--aperta-texto); }
-.veredito-estoura { border-color: var(--estoura); background: var(--estoura-suave); }
-.veredito-estoura strong { color: var(--estoura-texto); }
+/* Os tres estados: preenchimento chapado, texto preto. A forma e o nome vem
+   do componente (circulo, triangulo, quadrado), nunca so a cor. */
+.veredito-cabe { background: var(--cabe-suave); }
+.veredito-aperta { background: var(--aperta-suave); }
+.veredito-estoura { background: var(--estoura-suave); }
+
+/* A forma do estado, antes do nome: circulo, triangulo e quadrado. */
+.veredito strong::before {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 0.8em;
+  vertical-align: 0.1em;
+}
+.veredito-cabe strong::before { content: '\25CF'; }
+.veredito-aperta strong::before { content: '\25B2'; }
+.veredito-estoura strong::before { content: '\25A0'; }
 
 /* Chips: a fileira das mais usadas por voce, e o "+" de opcao nova. */
 .chips-destaque {
@@ -1044,7 +1089,7 @@ textarea.entrada {
 .veredito-ressalva {
   margin-top: 8px !important;
   padding-top: 8px;
-  border-top: 1px solid var(--borda);
+  border-top: 1px solid var(--sobre-estado);
   font-size: 0.82rem !important;
 }
 
@@ -1177,4 +1222,375 @@ textarea.entrada {
   margin: 6px 0 0;
   padding-left: 14px;
   border-left: 2px solid var(--borda);
+}
+
+/* ------------------------------------------------------------- graficos */
+
+/*
+ * Os graficos sao SVG feito a mao (`componentes/graficos/`), e herdam tudo do
+ * tema por aqui: nenhum atributo de cor mora no TSX, so classe. Cor e papel,
+ * como no resto do arquivo.
+ *
+ * Estado nunca e so cor: ponto e barra levam a forma (circulo, triangulo,
+ * quadrado) e o nome. Texto de eixo e de valor e sempre em Geist Mono.
+ */
+.grafico {
+  margin: 0;
+}
+
+.grafico svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* A linha fixa acima do grafico: o toque escreve o valor aqui, em vez de um
+   balao que no celular some debaixo do dedo. */
+.grafico-leitura {
+  min-height: 2.9em;
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: var(--texto-fraco);
+}
+
+.grafico-leitura strong {
+  font-weight: 800;
+  color: var(--texto);
+}
+
+.grafico-leitura .valor {
+  font-family: var(--fonte-valor);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--texto);
+}
+
+.gr-texto {
+  font-family: var(--fonte-valor);
+  font-size: 11px;
+  fill: var(--texto-fraco);
+}
+
+.gr-forte {
+  fill: var(--texto);
+  font-weight: 700;
+}
+
+/* No SVG o texto se pinta com `fill`, nao com `color`: `.subiu` e `.caiu` valem
+   tambem para o texto de dentro do grafico. */
+.grafico text.subiu { fill: var(--estoura-texto); }
+.grafico text.caiu { fill: var(--cabe-texto); }
+
+.gr-regua {
+  fill: none;
+  stroke: var(--borda-forte);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.gr-eixo {
+  stroke: var(--tinta);
+  stroke-width: var(--bw);
+}
+
+.gr-futuro {
+  fill: none;
+  stroke: var(--borda-forte);
+  stroke-opacity: 0.55;
+  stroke-width: 1.25;
+}
+
+.gr-contorno {
+  stroke: var(--tinta);
+  stroke-width: var(--bw);
+}
+
+.gr-linha {
+  fill: none;
+  stroke: var(--tinta);
+  stroke-width: 2.5;
+  stroke-linejoin: miter;
+}
+
+.gr-linha-fraca {
+  fill: none;
+  stroke: var(--borda-forte);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+
+.gr-area-boa { fill: var(--cabe); fill-opacity: 0.22; }
+.gr-area-ruim { fill: var(--estoura); fill-opacity: 0.35; }
+
+.gr-cabe { fill: var(--cabe); }
+.gr-aperta { fill: var(--aperta); }
+.gr-estoura { fill: var(--estoura); }
+
+.gr-acento { fill: var(--acento); }
+
+.gr-serie-1 { fill: var(--serie-1); }
+.gr-serie-2 { fill: var(--serie-2); }
+.gr-serie-3 { fill: var(--serie-3); }
+
+/* O que e tocavel: o foco de teclado aparece no desenho, nao na area invisivel. */
+.gr-toque {
+  cursor: pointer;
+  outline: none;
+}
+
+.gr-toque:focus-visible .gr-foco {
+  stroke: var(--tinta);
+  stroke-width: 3;
+}
+
+.gr-toque.gr-apagado {
+  opacity: 0.4;
+}
+
+/* O selo do estado: forma e nome, sobre o preenchimento do proprio estado. */
+.selo-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border: 1px solid var(--borda);
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--sobre-estado);
+  white-space: nowrap;
+}
+
+.selo-estado-cabe { background: var(--cabe-suave); }
+.selo-estado-aperta { background: var(--aperta-suave); }
+.selo-estado-estoura { background: var(--estoura-suave); }
+
+/* A legenda com quadrado de cor, quando o rotulo direto nao cabe. */
+.grafico-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.grafico-legenda i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: var(--bw) solid var(--tinta);
+  vertical-align: -1px;
+}
+
+/* ---- as barras do mes (Painel) */
+
+.barra-estado {
+  margin-top: 18px;
+}
+
+.barra-estado-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-weight: 800;
+}
+
+.barra-estado-valores {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+  font-family: var(--fonte-valor);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+}
+
+.barra-estado-valores > span:first-child {
+  font-weight: 700;
+}
+
+.barra-estado-valores > span:last-child {
+  color: var(--texto-fraco);
+}
+
+/* ---- a pizza como cupom (Resumo) */
+
+/*
+ * O cupom: corpo de papel e borda de baixo serrilhada. A sombra dura vai no
+ * conjunto (`drop-shadow`), e nao no corpo, para ela seguir o serrilhado.
+ */
+.cupom {
+  margin-bottom: 14px;
+  filter: drop-shadow(var(--afunda) var(--afunda) 0 var(--tinta));
+}
+
+.cupom-corpo {
+  padding: 16px 16px 6px;
+  background: var(--superficie);
+  border: var(--bw) solid var(--borda);
+  border-bottom: 0;
+}
+
+.cupom-serra {
+  display: block;
+  width: 100%;
+  height: 12px;
+  margin-top: -1px;
+}
+
+.cupom-serra .cheio { fill: var(--superficie); }
+.cupom-serra .borda {
+  fill: none;
+  stroke: var(--borda);
+  stroke-width: var(--bw);
+  vector-effect: non-scaling-stroke;
+}
+
+.cupom-pizza {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 10px;
+}
+
+.cupom-pizza svg {
+  width: 188px;
+  height: 188px;
+}
+
+.cupom-linha {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cupom-linha i {
+  flex: none;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  border: var(--bw) solid var(--tinta);
+}
+
+.cupom-nome {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* O pontilhado que liga o nome ao valor, como numa linha de cupom. */
+.cupom-pontos {
+  flex: 1;
+  min-width: 12px;
+  border-bottom: 2px dotted var(--borda-forte);
+  transform: translateY(-3px);
+}
+
+.cupom-valor {
+  font-family: var(--fonte-valor);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cupom-pct {
+  width: 3.6ch;
+  text-align: right;
+  font-family: var(--fonte-valor);
+  font-size: 0.8rem;
+  color: var(--texto-fraco);
+}
+
+.cupom-delta {
+  display: block;
+  margin: -4px 0 6px 18px;
+  font-size: 0.8rem;
+}
+
+.cupom-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 10px 0;
+  border-top: 2px dashed var(--borda-forte);
+  font-weight: 800;
+}
+
+.cupom-total > span:last-child {
+  font-family: var(--fonte-valor);
+  font-variant-numeric: tabular-nums;
+}
+
+.cupom-compras {
+  margin: 0 0 8px;
+  padding-left: 12px;
+  border-left: var(--bw) solid var(--borda);
+}
+
+/* ---- o que subiu no carrinho (Resumo) */
+
+.preco-linha {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 2px dashed var(--borda-forte);
+}
+
+.preco-linha:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+
+.preco-nome {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.preco-nome small {
+  display: block;
+  font-family: var(--fonte-valor);
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--texto-fraco);
+}
+
+.preco-variacao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 4.6rem;
+  padding: 2px 8px;
+  border: 1px solid var(--borda);
+  font-family: var(--fonte-valor);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--sobre-estado);
+}
+
+.preco-variacao.subiu-preco { background: var(--estoura-suave); }
+.preco-variacao.caiu-preco { background: var(--cabe-suave); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .gr-toque,
+  .gr-toque * {
+    transition: opacity 120ms linear;
+  }
 }

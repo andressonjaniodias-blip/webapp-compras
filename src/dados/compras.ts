@@ -56,6 +56,18 @@ export async function listarItens(compraId: string): Promise<ItemLocal[]> {
 }
 
 /**
+ * Todos os itens vivos, de todas as compras.
+ *
+ * Para o historico de preco (`lib/series.ts`), que precisa da serie de cada item
+ * ao longo do tempo. Volume pequeno (dezenas de compras por mes), entao ler tudo e
+ * agrupar em memoria custa menos que manter um indice por item.
+ */
+export async function listarTodosOsItens(): Promise<ItemLocal[]> {
+  const todos = await banco.itens.toArray();
+  return todos.filter(naoExcluido);
+}
+
+/**
  * Categoria, forma de pagamento e conta da ultima compra, para ja virem
  * preenchidas na proxima. Quem compra no mesmo mercado toda semana nao deveria
  * ter que escolher "Mercado" e "Débito" toda vez.

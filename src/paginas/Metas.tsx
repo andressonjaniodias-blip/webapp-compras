@@ -18,6 +18,7 @@
 
 import { useState } from 'react';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
+import { BarraDeProgresso } from '../componentes/graficos/BarraDeProgresso';
 import { limitesDo } from '../../compartilhado/planos';
 import { panorama, planejarMeta } from '../../compartilhado/previsao';
 import type { Meta } from '../../compartilhado/tipos';
@@ -104,9 +105,10 @@ export function Metas() {
                   {formatarReais(meta.guardado)} de {formatarReais(meta.valorAlvo)}
                   {plan.falta > 0 && ` · faltam ${formatarReais(plan.falta)}`}
                 </div>
-                <div className="barra">
-                  <div className="barra-preenchida" style={{ width: plan.progresso * 100 + '%' }} />
-                </div>
+                <BarraDeProgresso
+                  progresso={plan.progresso}
+                  rotulo={`${Math.round(plan.progresso * 100)}% de ${meta.descricao || 'a meta'} guardado`}
+                />
                 <div className="compra-meta" style={{ marginTop: 6 }}>
                   <ResumoDoPlano plano={plan} />
                 </div>

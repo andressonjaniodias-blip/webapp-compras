@@ -22,9 +22,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { listarCompras } from '../dados/compras';
+import { listarCompras, listarTodosOsItens } from '../dados/compras';
 import { useFinanceiro } from '../dados/financeiro';
 import { mesesComMovimento, resumirMes, type FatiaResumo } from '../lib/resumo';
+import {
+  compararNoMesmoPeriodo,
+  historicoDePreco,
+  mudancasDePreco,
+  serieDeMeses,
+} from '../lib/series';
 import {
   extratoDeDividas,
   gastoComDividasNoMes,
@@ -38,6 +44,11 @@ import { formatarData, mesAtual, nomeMes } from '../lib/datas';
 import { pedirDicas, type Dicas } from '../dados/api';
 import { useApp } from '../estado';
 import { NavegadorDeMes } from '../componentes/NavegadorDeMes';
+import { BarraDeProgresso } from '../componentes/graficos/BarraDeProgresso';
+import { BarrasComparativas } from '../componentes/graficos/BarrasComparativas';
+import { ColunasMensais } from '../componentes/graficos/ColunasMensais';
+import { Cupom } from '../componentes/graficos/Cupom';
+import { PrecosQueSubiram } from '../componentes/graficos/PrecosQueSubiram';
 import { useVoltar } from '../lib/useVoltar';
 
 /** Quantas categorias aparecem antes do resto virar "outras". */
@@ -53,6 +64,7 @@ export function Resumo() {
   const voltar = useVoltar('/');
   const { iaLigada, offline, plano } = useApp();
   const compras = useLiveQuery(listarCompras, [], undefined);
+  const itens = useLiveQuery(listarTodosOsItens, [], undefined);
   const financeiro = useFinanceiro();
 
   const [mesEscolhido, setMesEscolhido] = useState<string | null>(null);
@@ -90,6 +102,13 @@ export function Resumo() {
   });
 
   const caixa = financeiro.mostrar ? resumoDoMes(financeiro.dados, mes, agora) : null;
+
+  // Os graficos so desenham: cada numero sai de `lib/series.ts`, e de la das
+  // mesmas funcoes que o resto da tela usa. A serie termina no mes corrente, e
+  // nao no escolhido, para a janela nao andar quando se toca numa coluna.
+  const serie = serieDeMeses(compras, corrente, 6, agora);
+  const comparacao = compararNoMesmoPeriodo(compras, mes, agora);
+  const precos = itens ? mudancasDePreco(historicoDePreco(itens, compras)) : [];
 
   // O que os emprestimos e financiamentos ja custaram no mes (descontado ou pago),
   // para o total de gastos. So apresentacao: "Comprei" e a sobra nao mudam.
@@ -129,6 +148,20 @@ export function Resumo() {
       </header>
 
       <NavegadorDeMes meses={meses} mes={mes} onChange={escolherMes} />
+
+      {serie.length > 0 && (
+        <>
+          <h2 className="secao-titulo">Os últimos meses</h2>
+          <section className="cartao">
+            <ColunasMensais
+              serie={serie}
+              tipico={estimativa.mesesUsados > 0 ? estimativa.total : null}
+              selecionado={mes}
+              aoEscolher={escolherMes}
+            />
+          </section>
+        </>
+      )}
 
       {caixa && (
         <RazaoDoCaixa caixa={caixa} ehCorrente={ehCorrente} temRenda={financeiro.temRenda} />
@@ -231,12 +264,50 @@ export function Resumo() {
       {resumo.quantidade === 0 && <p className="vazio">Nenhuma compra neste mês.</p>}
 
       {resumo.porCategoria.length > 0 && (
-        <Fatias
-          titulo="Por categoria"
-          legenda="do total comprado, comparado ao mês anterior"
-          fatias={resumo.porCategoria}
-          abrir={(id) => navegar('/compra/' + id)}
-        />
+        <>
+          <h2 className="secao-titulo">Por categoria</h2>
+          <Cupom
+            fatias={resumo.porCategoria}
+            total={resumo.total}
+            rotuloDoTotal={'Comprei em ' + apenasMes(mes)}
+            mostrarDelta={!ehCorrente}
+            abrirCompra={(id) => navegar('/compra/' + id)}
+          />
+        </>
+      )}
+
+      {comparacao && (
+        <>
+          <h2 className="secao-titulo">
+            {apenasMes(mes)} contra {apenasMes(comparacao.anterior)}
+          </h2>
+          <section className="cartao">
+            <p className="dica" style={{ marginTop: 0 }}>
+              {comparacao.ateODia !== null
+                ? `Os dois meses até o dia ${comparacao.ateODia}, para a conta ser justa.`
+                : 'Os dois meses inteiros.'}
+            </p>
+            <BarrasComparativas
+              comparacao={comparacao}
+              nomeAtual={apenasMes(mes)}
+              nomeAnterior={apenasMes(comparacao.anterior)}
+            />
+            <p className="dica">
+              Ao todo: {formatarReais(comparacao.totalAtual)} contra{' '}
+              {formatarReais(comparacao.totalAnterior)}.
+            </p>
+          </section>
+        </>
+      )}
+
+      {precos.length > 0 && (
+        <>
+          <h2 className="secao-titulo">O que subiu no seu carrinho</h2>
+          <section className="cartao">
+            <PrecosQueSubiram historicos={precos} />
+            <p className="dica">Preço por unidade, nas últimas compras de cada item.</p>
+          </section>
+        </>
       )}
 
       {resumo.porConta.length > 0 && (
@@ -516,9 +587,10 @@ function Fatias({
                   {formatarReais(fatia.total)} · {fatia.percentual.toFixed(0)}%
                 </span>
               </div>
-              <div className="barra">
-                <div className="barra-preenchida" style={{ width: fatia.percentual + '%' }} />
-              </div>
+              <BarraDeProgresso
+                progresso={fatia.percentual / 100}
+                rotulo={`${fatia.nome}: ${Math.round(fatia.percentual)}% do total`}
+              />
             </button>
 
             {aberta === fatia.nome && (

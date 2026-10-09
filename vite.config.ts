@@ -29,10 +29,11 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         // O manifesto aceita UMA cor, e ela pinta a tela de abertura antes de
-        // o app saber o tema. Fica a escura, que e a do icone; depois de aberto,
-        // as `theme-color` do `index.html` assumem.
-        background_color: '#0f1720',
-        theme_color: '#0f1720',
+        // o app saber o tema. Fica a escura; depois de aberto, as `theme-color`
+        // do `index.html` assumem. O icone ainda e o azul-grafite de antes: trocar
+        // o icone esta em `pendencias.md`.
+        background_color: '#0a0a0a',
+        theme_color: '#0a0a0a',
         icons: [
           { src: 'icone-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icone-512.png', sizes: '512x512', type: 'image/png' },

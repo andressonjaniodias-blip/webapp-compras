@@ -48,6 +48,7 @@ import {
 import {
   estimarEntradaMensal,
   estimarGastoCorrente,
+  folgaDe,
   panorama,
   planejarMeta,
   projetar,
@@ -73,10 +74,20 @@ import {
   nomeMes,
   paraInputData,
 } from '../src/lib/datas';
+import {
+  barrasDoMes,
+  compararNoMesmoPeriodo,
+  estadoDoSaldo,
+  gastoVariavelPorDia,
+  historicoDePreco,
+  mudancasDePreco,
+  serieDeMeses,
+} from '../src/lib/series';
 import type {
   Compra,
   Conta,
   Divida,
+  Item,
   Meta,
   RegraCategoria,
   Renda,
@@ -1994,6 +2005,280 @@ console.log('\n19. Parcela variavel: o que eu paguei vira o valor da parcela');
   const extrato = extratoDeDividas(base, AGORA);
   igual('o extrato mostra o valor pago em setembro', extrato.find((p) => p.competencia === '2026-09')?.valor, 137210);
   igual('e o de outubro, a referencia', extrato.find((p) => p.competencia === '2026-10')?.valor, 137210);
+}
+
+// ============================ 20. as series que os graficos desenham
+
+/*
+ * Os componentes de grafico so desenham. Tudo o que mostram sai destas funcoes,
+ * e as barras do mes usam a mesma `estimarGastoCorrente` da previsao — sem uma
+ * conta propria que pudesse divergir.
+ */
+console.log('\n20. Series dos graficos: as marcas do mes, as barras, os seis meses, o mes contra mes e o preco');
+{
+  const AGORA = T(2026, 10, 9);
+  const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 1, 1) });
+  const gasto = (ano: number, mes: number, dia: number, categoria: string, total: number) =>
+    compra({ data: T(ano, mes, dia), categoria, total, contaId: 'cc' });
+
+  // ---- as 31 marcas
+  const outubro = [
+    gasto(2026, 10, 2, 'Comer fora', 8500),
+    gasto(2026, 10, 4, 'Mercado', 31000),
+    gasto(2026, 10, 4, 'Transporte', 2000),
+    gasto(2026, 10, 5, 'Contas de casa', 150000),
+    gasto(2026, 10, 9, 'Mercado', 55000),
+  ];
+  const marcas = gastoVariavelPorDia(outubro, '2026-10');
+  igual('outubro tem 31 marcas', marcas.length, 31);
+  igual('o dia 4 soma as duas compras variaveis', marcas[3], 33000);
+  igual('o dia 5 nao tem a conta fixa', marcas[4], 0);
+  igual('o dia sem compra e zero', marcas[0], 0);
+  igual('as marcas somam o variavel do mes', marcas.reduce((a, b) => a + b, 0), 96500);
+  igual('fevereiro de 2028 tem 29 marcas', gastoVariavelPorDia([], '2028-02').length, 29);
+  igual(
+    'compra excluida nao entra',
+    gastoVariavelPorDia([compra({ data: T(2026, 10, 3), categoria: 'Mercado', total: 999, excluidoEm: 1 })], '2026-10')[2],
+    0,
+  );
+
+  // ---- as barras do mes, contra o mes tipico
+  const meses = ['2026-07', '2026-08', '2026-09'];
+  const historico = meses.flatMap((m) => {
+    const [a, mm] = m.split('-').map(Number) as [number, number];
+    return [
+      gasto(a, mm, 5, 'Contas de casa', 150000),
+      gasto(a, mm, 10, 'Mercado', 150000),
+      gasto(a, mm, 20, 'Comer fora', 25000),
+    ];
+  });
+  const baseDados = dados({ contas: [cc], compras: [...historico, ...outubro] });
+  const estimativa = estimarGastoCorrente(baseDados, AGORA);
+  igual('o tipico fixo e a media dos tres meses', estimativa.fixo, 150000);
+  igual('o tipico variavel e a media dos tres meses', estimativa.variavel, 175000);
+
+  const barras = barrasDoMes(baseDados.compras, estimativa, AGORA);
+  igual('o gasto fixo do mes vem do mesmo gastoPorGrupo', barras.fixas?.feito, 150000);
+  igual('o gasto variavel do mes', barras.diaADia?.feito, 96500);
+  igual('fixo no tipico cabe', barras.fixas?.estado, 'cabe');
+  igual('conta fixa nao tem marca de hoje', barras.fixas?.hoje, null);
+  // dia 9 de 31: ritmo = 175000/31 = 5645; restam 78500 em 22 dias = 3568 > metade do ritmo.
+  igual('com folga no ritmo, cabe', barras.diaADia?.estado, 'cabe');
+  conferir(
+    'a marca de hoje fica onde o ritmo normal estaria (9/31 do tipico)',
+    Math.abs((barras.diaADia?.hoje ?? 0) - 9 / 31) < 1e-9,
+    String(barras.diaADia?.hoje),
+  );
+  igual('o que resta por dia, ate o fim do mes', barras.diaADia?.restaPorDia, Math.round(78500 / 22));
+
+  const apertado = barrasDoMes(
+    [...historico, gasto(2026, 10, 9, 'Mercado', 160000)],
+    estimativa,
+    AGORA,
+  );
+  // restam 15000 em 22 dias = 682 por dia, menos que a metade do ritmo (2823).
+  igual('menos que a metade do ritmo por dia aperta', apertado.diaADia?.estado, 'aperta');
+
+  const estourado = barrasDoMes([...historico, gasto(2026, 10, 9, 'Mercado', 180000)], estimativa, AGORA);
+  igual('passou do tipico estoura', estourado.diaADia?.estado, 'estoura');
+  igual('estourado nao tem "resta por dia" negativo', estourado.diaADia?.restaPorDia, 0);
+  const fixaEstourada = barrasDoMes([...historico, gasto(2026, 10, 5, 'Assinaturas', 160000)], estimativa, AGORA);
+  igual('conta fixa acima do tipico estoura', fixaEstourada.fixas?.estado, 'estoura');
+
+  const semBase = barrasDoMes(outubro, estimarGastoCorrente(dados({ compras: outubro }), AGORA), AGORA);
+  igual('sem mes completo no historico, nao ha barra de dia a dia', semBase.diaADia, null);
+  igual('nem a de contas fixas', semBase.fixas, null);
+
+  const comEventual = barrasDoMes([...historico, ...outubro, gasto(2026, 10, 6, 'Vestuário', 40000)], estimativa, AGORA);
+  igual('o eventual fica fora das barras e vai a parte', comEventual.eventual, 40000);
+  igual('e nao muda o variavel', comEventual.diaADia?.feito, 96500);
+
+  // ultimo dia do mes: nao ha "por dia" para dizer.
+  const ultimo = barrasDoMes([...historico, gasto(2026, 10, 31, 'Mercado', 100000)], estimativa, T(2026, 10, 31));
+  igual('no ultimo dia nao ha folga por dia', ultimo.diaADia?.restaPorDia, null);
+  igual('e abaixo do tipico cabe', ultimo.diaADia?.estado, 'cabe');
+
+  // ---- seis meses
+  const serie = serieDeMeses([...historico, ...outubro], '2026-10', 6, AGORA);
+  igual('a serie comeca no primeiro mes com compra (julho)', serie[0]?.mes, '2026-07');
+  igual('e termina no mes pedido', serie[serie.length - 1]?.mes, '2026-10');
+  igual('quatro meses, sem encher de zero antes do primeiro', serie.length, 4);
+  igual('so o corrente e parcial', serie.filter((m) => m.parcial).length, 1);
+  igual('o total do mes soma os tres grupos', serie[0]?.total, 325000);
+  igual('um mes so nao e serie', serieDeMeses(outubro, '2026-10', 6, AGORA).length, 0);
+  igual('sem compra nenhuma, nao ha serie', serieDeMeses([], '2026-10', 6, AGORA).length, 0);
+
+  // ---- mes contra mes, no mesmo periodo
+  const setembro = [
+    gasto(2026, 9, 3, 'Mercado', 20000),
+    gasto(2026, 9, 8, 'Mercado', 5000),
+    gasto(2026, 9, 9, 'Comer fora', 3000),
+    gasto(2026, 9, 10, 'Mercado', 70000), // depois do dia 9: fora do corte
+    gasto(2026, 9, 25, 'Comer fora', 40000), // idem
+  ];
+  const outubroCorte = [
+    gasto(2026, 10, 4, 'Mercado', 30000),
+    gasto(2026, 10, 9, 'Comer fora', 12000),
+    gasto(2026, 10, 12, 'Mercado', 99999), // futuro: depois de hoje
+  ];
+  const comp = compararNoMesmoPeriodo([...setembro, ...outubroCorte], '2026-10', AGORA)!;
+  igual('o corte e o dia de hoje nos dois meses', comp.ateODia, 9);
+  igual('outubro ate o dia 9', comp.totalAtual, 42000);
+  igual('setembro ate o dia 9, sem o que veio depois', comp.totalAnterior, 28000);
+  const mercado = comp.linhas.find((l) => l.nome === 'Mercado')!;
+  igual('mercado agora', mercado.atual, 30000);
+  igual('mercado no mesmo periodo do mes anterior', mercado.anterior, 25000);
+  igual('a maior categoria vem primeiro', comp.linhas[0]?.nome, 'Mercado');
+
+  // dia 31 contra um mes de 30 dias: leva o mes anterior inteiro.
+  const trinta = compararNoMesmoPeriodo(
+    [gasto(2026, 9, 30, 'Mercado', 1000), gasto(2026, 10, 31, 'Mercado', 2000)],
+    '2026-10',
+    T(2026, 10, 31),
+  )!;
+  igual('dia 31 contra mes de 30 dias: o dia 30 entra', trinta.totalAnterior, 1000);
+
+  // mes fechado: meses inteiros.
+  const fechado = compararNoMesmoPeriodo([...setembro, ...outubroCorte], '2026-09', AGORA);
+  igual('mes fechado nao tem corte de dia', fechado?.ateODia, null);
+  igual('setembro inteiro', fechado?.totalAtual, 138000);
+
+  // categoria que so existe num dos meses.
+  const soUma = compararNoMesmoPeriodo(
+    [gasto(2026, 10, 2, 'Pets', 7000), gasto(2026, 9, 2, 'Lazer', 9000)],
+    '2026-10',
+    AGORA,
+  )!;
+  igual('categoria nova entra com anterior zero', soUma.linhas.find((l) => l.nome === 'Pets')?.anterior, 0);
+  igual('categoria que sumiu entra com atual zero', soUma.linhas.find((l) => l.nome === 'Lazer')?.atual, 0);
+
+  // o resto vira "Outras", e os totais continuam batendo.
+  const muitas = compararNoMesmoPeriodo(
+    ['Mercado', 'Comer fora', 'Transporte', 'Pets', 'Lazer', 'Casa', 'Outros'].map((c, i) =>
+      gasto(2026, 10, 3, c, 1000 * (i + 1)),
+    ),
+    '2026-10',
+    AGORA,
+    3,
+  )!;
+  igual('tres categorias mais "Outras"', muitas.linhas.length, 4);
+  igual('"Outras" fecha a lista', muitas.linhas[3]?.nome, 'Outras');
+  igual('o total nao muda ao agrupar', muitas.linhas.reduce((s, l) => s + l.atual, 0), muitas.totalAtual);
+  igual('sem compra nos dois cortes, nao ha comparacao', compararNoMesmoPeriodo([], '2026-10', AGORA), null);
+
+  // ---- o preco ao longo do tempo
+  const item = (compraId: string, nome: string, preco: number, unidade = 'un', excluidoEm: number | null = null): Item => ({
+    id: id('item'), compraId, nome, quantidade: 1, unidade, precoUnitario: preco, total: preco,
+    ordem: 0, atualizadoEm: 0, excluidoEm,
+  });
+  const cs = [5, 6, 7, 8, 9].map((m) => compra({ id: 'c' + m, data: T(2026, m, 4) }));
+  const arroz = [2190, 2240, 2490, 2750, 2990].map((p, i) => item('c' + (5 + i), 'Arroz 5 kg', p));
+  const hist = historicoDePreco(
+    [
+      ...arroz,
+      item('c5', 'Café', 1450), item('c6', 'Café', 1500), // so dois pontos
+      item('c7', 'Azeite', 4290), item('c8', 'Azeite', 3990), item('c9', 'azeite ', 3490), // nome sujo, mesma chave
+    ],
+    cs,
+  );
+  const a = hist.find((h) => h.chave === 'arroz 5 kg')!;
+  igual('o arroz tem cinco pontos', a.pontos.length, 5);
+  conferir('o arroz subiu 36,5%', Math.abs(a.variacao - (2990 - 2190) / 2190) < 1e-9, String(a.variacao));
+  igual('item com dois pontos nao ganha historico', hist.find((h) => h.chave === 'cafe'), undefined);
+  igual('o nome com espaco e maiuscula e o mesmo item', hist.find((h) => h.chave === 'azeite')?.pontos.length, 3);
+  conferir('o azeite caiu', (hist.find((h) => h.chave === 'azeite')?.variacao ?? 0) < 0);
+  igual('ordena pela mudanca maior, para cima ou para baixo', hist[0]?.chave, 'arroz 5 kg');
+
+  const misto = historicoDePreco(
+    [item('c5', 'Queijo', 2000, 'kg'), item('c6', 'Queijo', 500, 'un'), item('c7', 'Queijo', 520, 'un'), item('c8', 'Queijo', 540, 'un')],
+    cs,
+  );
+  igual('so a unidade da compra mais recente entra (kg fica de fora)', misto[0]?.pontos.length, 3);
+  igual('e a unidade do historico e a mais recente', misto[0]?.unidade, 'un');
+
+  const doMesmoDia = historicoDePreco(
+    [item('c5', 'Leite', 500), item('c5', 'Leite', 520), item('c6', 'Leite', 530), item('c7', 'Leite', 540)],
+    cs,
+  );
+  igual('dois itens no mesmo dia viram um ponto', doMesmoDia[0]?.pontos.length, 3);
+  igual('e vale o ultimo lancado do dia', doMesmoDia[0]?.pontos[0]?.preco, 520);
+
+  igual(
+    'item excluido nao entra',
+    historicoDePreco(arroz.map((i) => ({ ...i, excluidoEm: 1 })), cs).length,
+    0,
+  );
+  igual('item de compra que nao existe mais e ignorado', historicoDePreco(arroz, []).length, 0);
+  const longo = [5, 6, 7, 8, 9, 10, 11, 12].map((m) => compra({ id: 'l' + m, data: T(2026, 1, m) }));
+  igual(
+    'fica so a janela dos ultimos pontos',
+    historicoDePreco(longo.map((c, i) => item(c.id, 'Pao', 100 + i)), longo, 6)[0]?.pontos.length,
+    6,
+  );
+}
+
+// ============= 20b. o estado de cada ponto do saldo, e quais precos sao noticia
+
+/*
+ * O grafico do saldo classifica cada mes pela MESMA regra do veredito do
+ * simulador. Se as duas divergissem, o simulador diria "aperta" e o desenho
+ * mostraria um circulo de "cabe" para o mesmo mes.
+ */
+console.log('\n20b. O estado de cada ponto do saldo, e quais precos sao noticia');
+{
+  const AGORA = T(2026, 10, 9);
+  const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 100000, saldoInicialEm: T(2026, 1, 1) });
+  const base = dados({
+    contas: [cc],
+    rendas: salarios('2026-07', '2026-10', 5, 500000, { contaId: 'cc' }),
+    compras: ['2026-07', '2026-08', '2026-09'].map((m) => {
+      const [a, mm] = m.split('-').map(Number) as [number, number];
+      return compra({ data: T(a, mm, 10), categoria: 'Mercado', total: 200000, contaId: 'cc' });
+    }),
+  });
+  const estimativa = estimarGastoCorrente(base, AGORA);
+  igual('a folga e metade do gasto tipico', folgaDe(estimativa), Math.round(estimativa.total / 2));
+  igual('a folga de 200000 por mes e 100000', folgaDe(estimativa), 100000);
+
+  const folga = folgaDe(estimativa);
+  igual('saldo negativo estoura', estadoDoSaldo(-1, folga), 'estoura');
+  igual('saldo zero ja aperta (nao estoura)', estadoDoSaldo(0, folga), 'aperta');
+  igual('abaixo da folga aperta', estadoDoSaldo(folga - 1, folga), 'aperta');
+  igual('na folga, cabe', estadoDoSaldo(folga, folga), 'cabe');
+  igual('acima da folga, cabe', estadoDoSaldo(folga + 1, folga), 'cabe');
+
+  // O contrato com o simulador: o veredito dele e o pior estado dos pontos que o
+  // grafico desenha. Uma compra grande faz o grafico ter um quadrado e o
+  // simulador dizer "estoura"; uma pequena, so circulos e "cabe".
+  const opcoes = { meses: 6, agora: AGORA, gastoManual: null, entradaManual: null };
+  const hip = (valor: number) => ({ valor, contaId: 'cc', parcelas: 1, data: AGORA, categoria: 'Outros' });
+  const pesada = simular(base, hip(2000000), opcoes);
+  igual(
+    'compra pesada: o simulador estoura',
+    pesada.veredito,
+    'estoura',
+  );
+  conferir(
+    'e o grafico desenha pelo menos um quadrado (estoura)',
+    pesada.depois.some((l) => estadoDoSaldo(l.saldoAcumulado, folga) === 'estoura'),
+  );
+  const leve = simular(base, hip(1000), opcoes);
+  igual('compra minima: o simulador diz que cabe', leve.veredito, 'cabe');
+  conferir(
+    'e o grafico nao desenha quadrado novo',
+    !leve.depois.some((l, i) => estadoDoSaldo(l.saldoAcumulado, folga) === 'estoura' && estadoDoSaldo(leve.antes[i]!.saldoAcumulado, folga) !== 'estoura'),
+  );
+
+  // ---- quais itens sao noticia
+  const hist = (chave: string, variacao: number) => ({
+    chave, nome: chave, unidade: 'un', pontos: [], variacao,
+  });
+  const lista = [hist('a', 0.37), hist('b', -0.19), hist('c', 0.004), hist('d', -0.004), hist('e', 0.1), hist('f', 0.05)];
+  const noticia = mudancasDePreco(lista, 3);
+  igual('mudanca que arredonda para 0% nao e noticia', mudancasDePreco(lista, 10).some((h) => h.chave === 'c' || h.chave === 'd'), false);
+  igual('o teto de itens vale', noticia.length, 3);
+  igual('a ordem original (a mais forte primeiro) e mantida', noticia.map((h) => h.chave).join(','), 'a,b,e');
+  igual('sem nada que mudou, lista vazia', mudancasDePreco([hist('c', 0.004)]).length, 0);
 }
 
 console.log('');if (falhas > 0) {

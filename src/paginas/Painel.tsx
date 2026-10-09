@@ -43,12 +43,17 @@ import {
   terminaEm,
 } from '../../compartilhado/carteira';
 import { limitesDo } from '../../compartilhado/planos';
-import { panorama, temBaseDeEntrada } from '../../compartilhado/previsao';
+import { panorama, reservaMensalDeMetas, temBaseDeEntrada } from '../../compartilhado/previsao';
 import { formatarReais } from '../lib/dinheiro';
 import { chaveMes, nomeMes } from '../lib/datas';
 import { resumirMes } from '../lib/resumo';
+import { barrasDoMes, serieDeMeses, type BarraDoMes } from '../lib/series';
 import { useApp } from '../estado';
 import { BarraSituacao } from '../componentes/BarraSituacao';
+import { BarraDeProgresso } from '../componentes/graficos/BarraDeProgresso';
+import { BarraEstado } from '../componentes/graficos/BarraEstado';
+import { MesEmMarcas } from '../componentes/graficos/MesEmMarcas';
+import { Sparkline } from '../componentes/graficos/Sparkline';
 
 export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
   const navegar = useNavigate();
@@ -94,6 +99,12 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
   const guardado = dados.metas.reduce((soma, m) => soma + m.guardado, 0);
   const alvo = dados.metas.reduce((soma, m) => soma + m.valorAlvo, 0);
 
+  // ---- O mes em marcas e as barras: contra o mes tipico, que e a MESMA
+  // estimativa da previsao (`visao.estimativa`). Nenhuma conta propria aqui.
+  const barras = compras ? barrasDoMes(compras, visao.estimativa, agora) : null;
+  const reserva = reservaMensalDeMetas(dados.metas);
+  const gastoDosMeses = compras ? serieDeMeses(compras, mes, 6, agora) : [];
+
   return (
     <div className="app">
       <header className="topo">
@@ -119,6 +130,50 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
         onSimular={() => navegar('/simular')}
       />
 
+      {barras && (
+        <section className="cartao" aria-label="Como o mês está indo">
+          <h2 className="secao-titulo" style={{ marginTop: 0 }}>Como o mês está indo</h2>
+          {barras.diaADia === null && barras.fixas === null ? (
+            <p className="dica" style={{ marginTop: 0 }}>
+              Com um mês completo de compras, o app mostra aqui como o mês está indo.
+            </p>
+          ) : (
+            <>
+              <MesEmMarcas
+                dias={barras.dias}
+                diaDeHoje={barras.diaDeHoje}
+                ritmoPorDia={barras.diaADia?.ritmoPorDia ?? null}
+              />
+              {barras.diaADia && (
+                <BarraEstado
+                  nome="Dia a dia"
+                  barra={barras.diaADia}
+                  descricao={fraseDoDiaADia(barras.diaADia)}
+                />
+              )}
+              {barras.fixas && (
+                <BarraEstado
+                  nome="Contas fixas"
+                  barra={barras.fixas}
+                  descricao={fraseDasFixas(barras.fixas)}
+                />
+              )}
+              {barras.eventual > 0 && (
+                <p className="dica">
+                  Fora da curva este mês: {formatarReais(barras.eventual)} em gastos eventuais, que
+                  não entram nas barras.
+                </p>
+              )}
+              {reserva > 0 && (
+                <p className="dica">
+                  Reserva planejada: {formatarReais(reserva)} por mês, para as metas.
+                </p>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
       <div className="painel">
         <Cartao titulo="Gastos" onAbrir={() => navegar('/compras')}>
           <span className="dica">em {soOMes(mes)}</span>
@@ -127,6 +182,12 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
           </span>
           {comDividas.parcelas > 0 && (
             <span className="dica">com {formatarReais(comDividas.total)} de empréstimos</span>
+          )}
+          {gastoDosMeses.length >= 2 && (
+            <Sparkline
+              valores={gastoDosMeses.map((m) => m.total)}
+              rotulo={`Gasto dos últimos ${gastoDosMeses.length} meses, até ${soOMes(mes)}.`}
+            />
           )}
         </Cartao>
 
@@ -185,12 +246,10 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
             <>
               <span className="dica">guardado</span>
               <span className="painel-numero">{formatarReais(guardado)}</span>
-              <span className="barra">
-                <span
-                  className="barra-preenchida"
-                  style={{ width: (alvo > 0 ? Math.min(1, guardado / alvo) * 100 : 0) + '%', display: 'block' }}
-                />
-              </span>
+              <BarraDeProgresso
+                progresso={alvo > 0 ? guardado / alvo : 0}
+                rotulo={`${formatarReais(guardado)} guardados de ${formatarReais(alvo)}`}
+              />
               <span className="dica">de {formatarReais(alvo)}</span>
             </>
           ) : (
@@ -286,6 +345,29 @@ function Cartao({
       <span className="painel-ver">Abrir ›</span>
     </button>
   );
+}
+
+/**
+ * A frase de cada barra: o que o estado quer dizer, em palavras. O estado em si
+ * (cabe, aperta, estoura) vem de `barrasDoMes`; aqui so se escreve.
+ */
+function fraseDoDiaADia(barra: BarraDoMes): string {
+  if (barra.estado === 'estoura') {
+    return `Passou do normal do mês em ${formatarReais(barra.feito - barra.tipico)}.`;
+  }
+  if (barra.restaPorDia === null) return 'O mês fechou dentro do normal.';
+  if (barra.estado === 'aperta') {
+    return `Resta ${formatarReais(barra.restaPorDia)} por dia. O normal é ${formatarReais(barra.ritmoPorDia ?? 0)}.`;
+  }
+  return `Resta ${formatarReais(barra.restaPorDia)} por dia até o fim do mês.`;
+}
+
+function fraseDasFixas(barra: BarraDoMes): string {
+  if (barra.estado === 'estoura') {
+    return `Passou do normal em ${formatarReais(barra.feito - barra.tipico)}.`;
+  }
+  const falta = barra.tipico - barra.feito;
+  return falta > 0 ? `Faltam ${formatarReais(falta)} para o normal do mês.` : 'No normal do mês.';
 }
 
 /** "2026-10" -> "outubro". No cartao o ano so ocuparia espaco. */

@@ -20,6 +20,7 @@
 import { useState } from 'react';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { CampoNumero } from '../componentes/CampoNumero';
+import { BarraDeProgresso } from '../componentes/graficos/BarraDeProgresso';
 import { TIPOS_DIVIDA } from '../../compartilhado/constantes';
 import { compromissos, extratoDeDividas } from '../../compartilhado/carteira';
 import { valorDaParcela } from '../../compartilhado/parcelamento';
@@ -124,9 +125,11 @@ export function Dividas() {
                     : `${divida.parcelas} parcelas`}
                   {falta?.ultima && ` · até ${nomeMes(falta.ultima)}`}
                 </div>
-                <div className="barra">
-                  <div className="barra-preenchida" style={{ width: progresso + '%' }} />
-                </div>
+                <BarraDeProgresso
+                  progresso={progresso / 100}
+                  segmentos={{ total: divida.parcelas, feitos: pagas }}
+                  rotulo={`${pagas} de ${divida.parcelas} parcelas pagas`}
+                />
                 <div className="compra-meta" style={{ marginTop: 6 }}>
                   {pagas} de {divida.parcelas} pagas ·{' '}
                   {formatarReais(valorMensal)}/mês{divida.parcelaVariavel && ' (varia)'}

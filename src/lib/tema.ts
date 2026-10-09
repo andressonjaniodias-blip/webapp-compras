@@ -20,7 +20,7 @@ export type Tema = 'automatico' | 'claro' | 'escuro';
 const CHAVE = 'tema';
 
 /** Iguais ao `--fundo` de cada tema em `estilos.css`: pintam a barra do sistema. */
-const FUNDO = { claro: '#f7faf7', escuro: '#0f1720' } as const;
+const FUNDO = { claro: '#d6d6d2', escuro: '#0a0a0a' } as const;
 
 export function lerTema(): Tema {
   try {

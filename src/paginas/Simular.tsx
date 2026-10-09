@@ -20,10 +20,12 @@ import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { CampoNumero } from '../componentes/CampoNumero';
 import { SeletorChips } from '../componentes/SeletorChips';
 import { TabelaPrevisao } from '../componentes/TabelaPrevisao';
+import { LinhaSaldo } from '../componentes/graficos/LinhaSaldo';
 import { CATEGORIAS, CATEGORIA_PADRAO } from '../../compartilhado/constantes';
 import { limitesDo } from '../../compartilhado/planos';
 import {
   estimarGastoCorrente,
+  folgaDe,
   mesesAteAMetaMaisLonga,
   simular,
   type Simulacao,
@@ -72,6 +74,16 @@ export function Simular() {
           { meses, agora, gastoManual, entradaManual },
         )
       : null;
+
+  // O que o plano deixa ler. O grafico so existe a partir de dois meses: um ponto
+  // sozinho nao e trajetoria, e a caixa vazia dele seria so uma moldura.
+  const mesesVisiveis = resultado ? (limites.simuladorCompleto ? resultado.depois.length : 1) : 0;
+  const temDetalhes =
+    resultado !== null &&
+    (resultado.parcelas > 1 ||
+      resultado.competenciaInicial !== null ||
+      (resultado.usoDoLimite !== null && resultado.faltaDeLimite === 0) ||
+      resultado.metasAtrasadas.length > 0);
 
   return (
     <div className="app">
@@ -139,6 +151,7 @@ export function Simular() {
             estimativaFraca={estimativa.fraca}
           />
 
+          {temDetalhes && (
           <div className="cartao">
             {resultado.parcelas > 1 && (
               <p style={{ marginTop: 0 }}>
@@ -167,11 +180,23 @@ export function Simular() {
               </p>
             ))}
           </div>
+          )}
 
           <h2 className="secao-titulo">Como ficam os próximos meses</h2>
+          {mesesVisiveis >= 2 && (
+            <section className="cartao">
+              <LinhaSaldo
+                linhas={resultado.depois}
+                referencia={resultado.antes}
+                visiveis={mesesVisiveis}
+                folga={folgaDe(estimativa)}
+                maisApertado={resultado.mesMaisApertado}
+              />
+            </section>
+          )}
           <TabelaPrevisao
             linhas={resultado.depois}
-            visiveis={limites.simuladorCompleto ? resultado.depois.length : 1}
+            visiveis={mesesVisiveis}
             maisApertado={resultado.mesMaisApertado}
           />
 

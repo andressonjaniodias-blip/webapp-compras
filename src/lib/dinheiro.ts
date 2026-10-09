@@ -27,6 +27,28 @@ export function formatarReais(centavos: number): string {
   return formatadorReais.format(centavos / 100);
 }
 
+const formatadorInteiro = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+
+const formatadorMil = new Intl.NumberFormat('pt-BR', {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+/**
+ * 123456 -> "R$ 1.235". Sem centavos, para rotulo de grafico, onde o espaco e
+ * curto e dois centavos so poluem. O sinal e o de menos de verdade (U+2212): o
+ * hifen colado no "R$" le como traco de ligacao.
+ */
+export function formatarReaisCurto(centavos: number): string {
+  const sinal = centavos < 0 ? '−' : '';
+  return `${sinal}R$ ${formatadorInteiro.format(Math.round(Math.abs(centavos) / 100))}`;
+}
+
+/** 460000 -> "4,6": milhares de reais com uma casa, para o topo de uma coluna. */
+export function formatarMilReais(centavos: number): string {
+  return formatadorMil.format(centavos / 100000);
+}
+
 /** 1852 -> "18,52". Para dentro de campo de digitacao. */
 export function formatarCentavos(centavos: number): string {
   return formatadorSimples.format(centavos / 100);

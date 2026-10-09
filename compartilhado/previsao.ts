@@ -391,6 +391,19 @@ export interface Hipotese {
 
 export type Veredito = 'cabe' | 'aperta' | 'estoura';
 
+/**
+ * A folga minima de um mes: metade do gasto tipico.
+ *
+ * Saldo abaixo dela e "aperta" (acima de zero, mas sem margem para um mes
+ * normal), e abaixo de zero e "estoura". Mora aqui, e nao dentro do `simular`,
+ * porque o grafico do saldo previsto classifica cada mes pela MESMA regra: duas
+ * copias dela dariam um simulador que diz "aperta" e um grafico que desenha
+ * "cabe" para o mesmo mes.
+ */
+export function folgaDe(estimativa: Estimativa): number {
+  return Math.round(estimativa.total / 2);
+}
+
 export interface Simulacao {
   antes: LinhaPrevisao[];
   depois: LinhaPrevisao[];
@@ -468,9 +481,7 @@ export function simular(
   const competenciaFinal = competenciaInicial ? somarMeses(competenciaInicial, vezes - 1) : null;
   const vencimentoEm = competenciaInicial ? vencimentoDe(conta!, competenciaInicial) : null;
 
-  const folga = Math.round(
-    estimarGastoCorrente(dados, opcoes.agora, opcoes.gastoManual).total / 2,
-  );
+  const folga = folgaDe(estimarGastoCorrente(dados, opcoes.agora, opcoes.gastoManual));
 
   const apertadosAntes = antes.filter((linha) => linha.saldoAcumulado < folga).length;
   const apertadosDepois = depois.filter((linha) => linha.saldoAcumulado < folga);

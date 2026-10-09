@@ -184,18 +184,41 @@ Rode as três antes de dar qualquer mudança por concluída.
   outro, sem erro para investigar. Ver `src/lib/datas.ts` e a seção 16 de
   `teste:contas`, que roda no Node justamente por ser outro runtime.
 
+- **O visual é brutalista, com a ideia do cupom** (desde 09/10/2026; o calmo de
+  06/10 saiu). Concreto de fundo, cartão de papel, contorno de `--bw` (1,5px),
+  raio zero e sombra dura de 2px que o toque "afunda" (`:active` com
+  `translate(var(--afunda))` e sem sombra). Nada de gradiente, blur nem raio:
+  quem quiser arredondar algo está desfazendo a decisão, que está em
+  `decisões.md` no cofre.
 - **Cor é papel, nunca valor.** Regra de `src/estilos.css` cita token
   (`--superficie`, `--estoura-texto`), não hex: o app tem tema claro e escuro, e
-  cor fixa numa regra quebra no outro. Cor de barra (`--cabe`, `--aperta`,
-  `--estoura`) não é cor de texto — texto usa a variante `-texto` e fundo
-  tingido usa a `-suave`; sobre `--acento` só vai `--sobre-acento`. O bloco
-  escuro de tokens existe **duas vezes** (aparelho no escuro, e escuro fixado em
-  Ajustes) e os dois têm de ficar iguais. A escolha mora no `localStorage`
-  (`src/lib/tema.ts`), não no Dexie, porque precisa valer antes do primeiro
-  quadro; o `index.html` lê a mesma chave.
+  cor fixa numa regra quebra no outro. **O `-suave` de estado é preenchimento
+  vivo, não tinta clara**: texto sobre ele é sempre `--sobre-estado` (preto nos
+  dois temas), nunca `--texto`, que no escuro é claro e some no amarelo. O
+  `-texto` é a cor de texto sobre superfície neutra; a cor sem sufixo
+  (`--cabe`, `--aperta`, `--estoura`) pinta barra, borda e ícone. Sobre
+  `--acento` só vai `--sobre-acento`. O bloco escuro de tokens existe **duas
+  vezes** (aparelho no escuro, e escuro fixado em Ajustes) e os dois têm de
+  ficar iguais. A escolha mora no `localStorage` (`src/lib/tema.ts`), não no
+  Dexie, porque precisa valer antes do primeiro quadro; o `index.html` lê a
+  mesma chave. Se mudar um token, rode `apoio/contraste-brutalista.mjs` (no
+  cofre): texto 4,5:1, elemento gráfico 3:1.
+- **Estado nunca é só cor.** Cabe, Aperta e Estoura levam forma (círculo,
+  triângulo, quadrado) e nome: `SeloDeEstado` e `MarcadorDeEstado`, em
+  `componentes/graficos/Estado.tsx`, e o `::before` do `.veredito`.
+- **Gráfico só desenha.** Os componentes de `src/componentes/graficos/` são SVG
+  feito à mão, sem biblioteca, e recebem tudo pronto. Todo número que eles
+  mostram sai de `src/lib/series.ts` (funções puras, testadas na seção 20 de
+  `teste:contas`) e, de lá, das mesmas funções que as páginas usam
+  (`gastoPorGrupo`, `estimarGastoCorrente`, `folgaDe`): um gráfico que faz a
+  própria conta é o caminho para o quinto número chamado "sobra" (invariante 9).
+  Sem dado suficiente o gráfico não aparece e a tela mostra uma frase neutra
+  (Princípio 0); sem `temBaseDeEntrada` não há linha de previsão (invariante 22).
+  Cor de gráfico é classe (`.gr-*`, `.gr-serie-N`, `--fatia-N`), nunca atributo.
 - **Valor em destaque usa `--fonte-valor`** (Geist Mono); texto usa `--fonte`
-  (Outfit). As duas são servidas pelo próprio app, e só o arquivo latino de
-  cada uma entra no build — fonte de fora quebraria o uso sem sinal.
+  (Archivo, com 800–900 nos títulos). As duas são servidas pelo próprio app, e
+  só o arquivo latino de cada uma entra no build — fonte de fora quebraria o uso
+  sem sinal.
 
 - Identificadores, arquivos e comentários em **português**.
 - Comentário de bloco no topo do arquivo explicando **por que** ele existe, não

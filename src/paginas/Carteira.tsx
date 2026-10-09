@@ -18,7 +18,13 @@ import { useNavigate } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { TabelaPrevisao } from '../componentes/TabelaPrevisao';
 import { limitesDo } from '../../compartilhado/planos';
-import { mesesAteAMetaMaisLonga, panorama, temBaseDeEntrada } from '../../compartilhado/previsao';
+import {
+  folgaDe,
+  mesesAteAMetaMaisLonga,
+  panorama,
+  temBaseDeEntrada,
+} from '../../compartilhado/previsao';
+import { LinhaSaldo } from '../componentes/graficos/LinhaSaldo';
 import { resumoDoMes } from '../../compartilhado/carteira';
 import { chaveDoMes } from '../../compartilhado/fatura';
 import { podeEnviar, podeReceber } from '../../compartilhado/tipos';
@@ -314,11 +320,23 @@ export function Carteira() {
       )}
 
       {temBase && (
-        <TabelaPrevisao
-          linhas={linhas}
-          visiveis={limites.mesesDePrevisao}
-          maisApertado={mesMaisApertado}
-        />
+        <>
+          {limites.mesesDePrevisao >= 2 && (
+            <section className="cartao">
+              <LinhaSaldo
+                linhas={linhas}
+                visiveis={limites.mesesDePrevisao}
+                folga={folgaDe(visao.estimativa)}
+                maisApertado={mesMaisApertado}
+              />
+            </section>
+          )}
+          <TabelaPrevisao
+            linhas={linhas}
+            visiveis={limites.mesesDePrevisao}
+            maisApertado={mesMaisApertado}
+          />
+        </>
       )}
 
       {/*
