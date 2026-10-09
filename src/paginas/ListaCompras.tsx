@@ -43,7 +43,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { criarCompra, listarCompras } from '../dados/compras';
 import type { CompraLocal } from '../dados/banco';
 import { useFinanceiro } from '../dados/financeiro';
-import { extratoDeDividas, type ParcelaDeDivida } from '../../compartilhado/carteira';
+import {
+  extratoDeDividas,
+  gastoComDividasNoMes,
+  type ParcelaDeDivida,
+} from '../../compartilhado/carteira';
 import { formatarReais } from '../lib/dinheiro';
 import { chaveMes, formatarData, mesesDaLista, nomeMes } from '../lib/datas';
 import { resumirMes } from '../lib/resumo';
@@ -87,6 +91,13 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
   const comprasDoMes = (compras ?? []).filter((c) => chaveMes(c.data) === mes);
   const parcelasDoMes = extrato.filter((p) => chaveMes(p.quando) === mes);
 
+  // Com emprestimo na lista, ela deixa de ser so de COMPRAS: e de gastos. Vale o
+  // mesmo na tela aberta pelo painel, que ja se chama Gastos.
+  const gastos = !inicio || extrato.length > 0;
+  const mesPorExtenso = nomeMes(mes).split(' ')[0];
+  const compradoNoMes = compras ? resumirMes(compras, mes).total : 0;
+  const comDividas = gastoComDividasNoMes(extrato, mes);
+
   return (
     <div className="app">
       <header className="topo">
@@ -96,7 +107,7 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
               ‹
             </button>
           )}
-          <h1>Compras</h1>
+          <h1>{gastos ? 'Gastos' : 'Compras'}</h1>
           {inicio && !financeiro.modoSimples && (
             <button
               type="button"
@@ -140,15 +151,26 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
         <>
           <NavegadorDeMes meses={meses} mes={mes} onChange={escolherMes} />
 
-          {/* O "Comprei" do Resumo: a mesma conta, sem o emprestimo. */}
+          {/*
+            O total do mes. As compras sao o "Comprei" do Resumo, a mesma conta; os
+            emprestimos somam so o que JA saiu da conta (descontado ou pago), e
+            aparecem separados para o total se poder conferir. Isto e apresentacao:
+            "Comprei" e a sobra nao mudam.
+          */}
           <div className="mes-total">
-            <span>Comprei em {nomeMes(mes).split(' ')[0]}</span>
-            <span>{formatarReais(resumirMes(compras, mes).total)}</span>
+            <span>{gastos ? 'Gastei' : 'Comprei'} em {mesPorExtenso}</span>
+            <span>{formatarReais(compradoNoMes + comDividas.total)}</span>
           </div>
+          {comDividas.parcelas > 0 && (
+            <p className="dica mes-total-detalhe">
+              compras {formatarReais(compradoNoMes)} · empréstimos e financiamentos{' '}
+              {formatarReais(comDividas.total)}
+            </p>
+          )}
 
           {comprasDoMes.length === 0 && parcelasDoMes.length === 0 && (
             <p className="vazio">
-              Nenhuma compra em {nomeMes(mes).split(' ')[0]}.
+              Nenhum gasto em {mesPorExtenso}.
               <br />
               Toque em <strong>Nova compra</strong> para registrar.
             </p>
