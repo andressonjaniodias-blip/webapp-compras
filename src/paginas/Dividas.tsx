@@ -18,7 +18,6 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { CampoNumero } from '../componentes/CampoNumero';
 import { TIPOS_DIVIDA } from '../../compartilhado/constantes';
@@ -30,9 +29,10 @@ import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
 import { deInputDataHora, nomeMes, paraInputDataHora } from '../lib/datas';
 import { useApp } from '../estado';
+import { useVoltar } from '../lib/useVoltar';
 
 export function Dividas() {
-  const navegar = useNavigate();
+  const voltar = useVoltar('/carteira');
   const { atualizarPendentes } = useApp();
   const { dados, carregando } = useFinanceiro();
   const [editando, setEditando] = useState<string | null>(null);
@@ -54,7 +54,7 @@ export function Dividas() {
     <div className="app">
       <header className="topo">
         <div className="topo-linha">
-          <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/carteira')}>
+          <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
             ‹
           </button>
           <h1>Empréstimos</h1>
@@ -252,8 +252,9 @@ function FormDivida({
         <span>Desconto automático em folha</span>
       </label>
       <p className="dica">
-        Consignado não atrasa: a parcela é considerada paga na data em que o salário cai, e o
-        app não pede para você registrar o pagamento. Sem isto, ele lembra você todo mês.
+        Consignado não atrasa: a parcela é considerada paga no dia em que o salário cai (o dia da
+        sua maior entrada dos últimos meses), e o app não pede para você registrar o pagamento.
+        Sem isto, ele lembra você todo mês.
       </p>
 
       <div className="campo">
@@ -270,7 +271,7 @@ function FormDivida({
           ))}
         </select>
         <p className="dica">
-          A entrada que você cadastrou é o salário <strong>antes</strong> do desconto do
+          A entrada que você lança é o salário <strong>antes</strong> do desconto do
           empréstimo. Sem dizer de qual conta a parcela sai, o saldo sobe esse valor todo mês.
         </p>
       </div>

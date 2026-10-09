@@ -25,6 +25,7 @@ import {
 } from 'react';
 import { FalhaDeRede, SemSessao, entrar, sair, verificarSessao } from './dados/api';
 import type { Plano } from '../compartilhado/planos';
+import { materializarRendasRecorrentes } from './dados/financas';
 import { contarPendentes, sincronizar, ultimaSincronizacao } from './dados/sincronizacao';
 
 export type Acesso = 'verificando' | 'liberado' | 'bloqueado';
@@ -85,7 +86,17 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
       setMensagem(null);
 
       try {
-        const resultado = await sincronizar();
+        let resultado = await sincronizar();
+        // Regra recorrente que acabou de chegar da nuvem vira lancamento aqui, e
+        // o que a migracao gravou sobe na mesma rodada, em vez de esperar a proxima.
+        if ((await materializarRendasRecorrentes()) > 0) {
+          const segunda = await sincronizar();
+          resultado = {
+            ...resultado,
+            enviados: resultado.enviados + segunda.enviados,
+            recebidos: resultado.recebidos + segunda.recebidos,
+          };
+        }
         setSituacao('ocioso');
         setOffline(false);
         if (forcar) {
@@ -114,6 +125,8 @@ export function ProvedorApp({ children }: { children: ReactNode }) {
     let vivo = true;
 
     (async () => {
+      // Antes de contar o que esta pendente: o que a migracao grava entra na fila.
+      await materializarRendasRecorrentes();
       await atualizarPendentes();
       try {
         const estado = await verificarSessao();

@@ -14,6 +14,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { listarCompras } from './compras';
 import {
+  lerEntradaManual,
   lerGastoManual,
   lerModoSimples,
   listarContas,
@@ -28,6 +29,8 @@ export interface EstadoFinanceiro {
   dados: DadosFinanceiros;
   /** Gasto corrente digitado pelo usuario, em centavos. `null` = usar a media. */
   gastoManual: number | null;
+  /** Entrada mensal digitada pelo usuario, em centavos. `null` = usar a media. */
+  entradaManual: number | null;
   modoSimples: boolean;
   carregando: boolean;
   temContas: boolean;
@@ -46,6 +49,7 @@ export interface EstadoFinanceiro {
 const VAZIO: EstadoFinanceiro = {
   dados: SEM_DADOS,
   gastoManual: null,
+  entradaManual: null,
   modoSimples: false,
   carregando: true,
   temContas: false,
@@ -57,7 +61,10 @@ const VAZIO: EstadoFinanceiro = {
 
 export function useFinanceiro(): EstadoFinanceiro {
   const estado = useLiveQuery(async (): Promise<EstadoFinanceiro> => {
-    const [contas, compras, rendas, dividas, metas, transferencias, modoSimples, gastoManual] =
+    const [
+      contas, compras, rendas, dividas, metas, transferencias, modoSimples, gastoManual,
+      entradaManual,
+    ] =
       await Promise.all([
         listarContas(),
         listarCompras(),
@@ -67,6 +74,7 @@ export function useFinanceiro(): EstadoFinanceiro {
         listarTransferencias(),
         lerModoSimples(),
         lerGastoManual(),
+        lerEntradaManual(),
       ]);
 
     const dados: DadosFinanceiros = { contas, compras, rendas, dividas, metas, transferencias };
@@ -76,6 +84,7 @@ export function useFinanceiro(): EstadoFinanceiro {
     return {
       dados,
       gastoManual,
+      entradaManual,
       modoSimples,
       carregando: false,
       temContas,

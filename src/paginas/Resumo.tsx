@@ -32,6 +32,7 @@ import { formatarReais } from '../lib/dinheiro';
 import { formatarData, mesAtual, nomeMes } from '../lib/datas';
 import { pedirDicas, type Dicas } from '../dados/api';
 import { useApp } from '../estado';
+import { useVoltar } from '../lib/useVoltar';
 
 /** Quantas categorias aparecem antes do resto virar "outras". */
 const CATEGORIAS_VISIVEIS = 6;
@@ -43,6 +44,7 @@ function apenasMes(chave: string): string {
 
 export function Resumo() {
   const navegar = useNavigate();
+  const voltar = useVoltar('/');
   const { iaLigada, offline, plano } = useApp();
   const compras = useLiveQuery(listarCompras, [], undefined);
   const financeiro = useFinanceiro();
@@ -109,7 +111,7 @@ export function Resumo() {
     <div className="app">
       <header className="topo">
         <div className="topo-linha">
-          <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/')}>
+          <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
             ‹
           </button>
           <h1>Resumo</h1>

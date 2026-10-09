@@ -38,7 +38,7 @@ import {
   acharConta,
   calcularCarteira,
   ehDeCaixa,
-  entradasEntre,
+  entradasDeCaixaEntre,
   gastoPorGrupo,
   mesesCompletosAntes,
   parcelasDoCartao,
@@ -135,6 +135,74 @@ export function estimarGastoCorrente(
   };
 }
 
+// ---------------------------------------------------------- entrada tipica
+
+export interface EstimativaDeEntrada {
+  /** Centavos por mes que costumam entrar na conta. */
+  total: number;
+  /** Quantos meses completos tinham alguma entrada. 0 = sem base nenhuma. */
+  mesesUsados: number;
+  /** Menos de dois meses de historico e chute, e a tela precisa dizer isso. */
+  fraca: boolean;
+  /** `true` quando o usuario digitou o proprio numero. */
+  manual: boolean;
+}
+
+/**
+ * Quanto costuma entrar por mes.
+ *
+ * ENTRADA E LANCAMENTO, nao regra: ninguem cadastra "salario, todo dia 5". Entao
+ * o que vai entrar nos meses que vem e estimado como o gasto ja e — a media dos
+ * meses completos anteriores, dividida so pelos meses que tiveram entrada. O
+ * mes em curso fica de fora: esta pela metade e puxaria a media para baixo.
+ *
+ * So conta entrada de CAIXA (`entradasDeCaixaEntre`, a mesma definicao do
+ * Resumo): recarga de vale nao paga fatura, e prever que ela paga seria prever
+ * dinheiro que nao vai estar na conta.
+ *
+ * A media inclui os extras (13o, reembolso). E o preco de nao pedir regra: quem
+ * tem um mes atipico digita o proprio valor, e a tela diz isso.
+ */
+export function estimarEntradaMensal(
+  dados: DadosFinanceiros,
+  agora: number,
+  sobrescrito?: number | null,
+): EstimativaDeEntrada {
+  if (sobrescrito !== undefined && sobrescrito !== null && sobrescrito >= 0) {
+    return {
+      total: sobrescrito,
+      mesesUsados: MESES_DE_HISTORICO,
+      fraca: false,
+      manual: true,
+    };
+  }
+
+  let soma = 0;
+  let usados = 0;
+  for (const mes of mesesCompletosAntes(agora, MESES_DE_HISTORICO)) {
+    const { inicio, fim } = intervaloDoMes(mes);
+    const doMes = entradasDeCaixaEntre(dados, inicio, fim);
+    if (doMes > 0) usados += 1;
+    soma += doMes;
+  }
+
+  return {
+    total: usados > 0 ? Math.round(soma / usados) : 0,
+    mesesUsados: usados,
+    fraca: usados < 2,
+    manual: false,
+  };
+}
+
+/**
+ * Ha de onde estimar a entrada? Sem isso, a previsao diria "voce vai ficar sem
+ * dinheiro" por falta de dado, e nao por falta de dinheiro (Principio 0: numero
+ * sem base nao se mostra).
+ */
+export function temBaseDeEntrada(estimativa: EstimativaDeEntrada): boolean {
+  return estimativa.manual || estimativa.mesesUsados > 0;
+}
+
 // ------------------------------------------------------------- projecao
 
 export interface LinhaPrevisao {
@@ -158,6 +226,8 @@ export interface OpcoesPrevisao {
   agora: number;
   /** Gasto corrente digitado pelo usuario, em centavos. */
   gastoManual?: number | null;
+  /** Entrada mensal digitada pelo usuario, em centavos. */
+  entradaManual?: number | null;
 }
 
 /**
@@ -172,6 +242,7 @@ export function projetar(dados: DadosFinanceiros, opcoes: OpcoesPrevisao): Linha
   const { agora } = opcoes;
   const carteira = calcularCarteira(dados, agora);
   const estimativa = estimarGastoCorrente(dados, agora, opcoes.gastoManual);
+  const entradaTipica = estimarEntradaMensal(dados, agora, opcoes.entradaManual).total;
   const reserva = reservaMensalDeMetas(dados.metas);
   const compromissosPorMes = comprometidoPorMes(dados, agora);
 
@@ -184,8 +255,15 @@ export function projetar(dados: DadosFinanceiros, opcoes: OpcoesPrevisao): Linha
     const { inicio, fim } = intervaloDoMes(mes);
     const parcial = n === 0;
 
+    // O QUE ENTRA NO MES: a entrada tipica, ou o que ja esta lancado se for mais.
+    // No mes corrente o saldo de partida ja tem o que caiu, entao falta entrar
+    // `tipica - jaEntrou` — e e isso que faz o salario cair sem dar degrau: ele
+    // so troca "falta entrar" por "ja esta na conta", e o saldo previsto para o
+    // fim do mes nao se mexe. Entrada lancada com data futura vale se for maior.
     const desde = parcial ? Math.max(inicio, agora) : inicio;
-    const entradas = entradasEntre(dados.rendas, desde, fim);
+    const lancadas = entradasDeCaixaEntre(dados, desde, fim);
+    const jaEntrou = parcial ? entradasDeCaixaEntre(dados, inicio, agora) : 0;
+    const entradas = Math.max(0, entradaTipica - jaEntrou, lancadas);
     const comprometido = compromissosPorMes.get(mes) ?? 0;
     const estimado = parcial
       ? Math.round(estimativa.total * fracaoRestanteDoMes(agora))
@@ -550,6 +628,7 @@ export function mesesAteAMetaMaisLonga(metas: readonly Meta[], agora: number): n
 export interface Panorama {
   carteira: Carteira;
   estimativa: Estimativa;
+  estimativaEntrada: EstimativaDeEntrada;
   linhas: LinhaPrevisao[];
   /** A linha de menor saldo acumulado — o mes em que a corda estica. */
   mesMaisApertado: LinhaPrevisao | null;
@@ -584,6 +663,7 @@ export function panorama(dados: DadosFinanceiros, opcoes: OpcoesPrevisao): Panor
   return {
     carteira: calcularCarteira(dados, opcoes.agora),
     estimativa: estimarGastoCorrente(dados, opcoes.agora, opcoes.gastoManual),
+    estimativaEntrada: estimarEntradaMensal(dados, opcoes.agora, opcoes.entradaManual),
     linhas,
     mesMaisApertado: alvo.reduce<LinhaPrevisao | null>(
       (pior, linha) => (pior === null || linha.saldoAcumulado < pior.saldoAcumulado ? linha : pior),

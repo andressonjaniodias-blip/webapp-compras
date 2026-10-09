@@ -40,6 +40,7 @@ import { intervaloDoMes } from '../../compartilhado/fatura';
 import { parcelasDaCompra, parcelasDaDivida, vezesDa } from '../../compartilhado/parcelamento';
 import { competenciaDaCompra } from '../../compartilhado/parcelamento';
 import { projetar } from '../../compartilhado/previsao';
+import { materializarRendasRecorrentes } from '../dados/financas';
 import { mesesComMovimento } from './resumo';
 import { formatarData } from './datas';
 
@@ -171,15 +172,13 @@ export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void>
   ];
 
   const abaRendas: Celula[][] = [
-    cabecalho(['ID', 'Data', 'Origem', 'Descrição', 'Valor', 'Frequência', 'Encerrada em', 'Cai em']),
+    cabecalho(['ID', 'Data', 'Origem', 'Descrição', 'Valor', 'Cai em']),
     ...tudo.rendas.map((r): Celula[] => [
       texto(r.id),
       data(r.data),
       texto(r.origem),
       texto(r.descricao),
       dinheiro(r.valor),
-      texto(r.periodicidade),
-      r.encerradoEm === null ? texto('') : data(r.encerradoEm),
       texto(apelido(r.contaId)),
     ]),
   ];
@@ -522,6 +521,10 @@ export async function importarBackup(texto: string): Promise<{ compras: number; 
       await banco.regras.bulkPut(pendente(dados.regras));
     },
   );
+
+  // Backup antigo pode trazer entrada recorrente: vira lancamento na hora, em vez
+  // de esperar a proxima abertura do app.
+  await materializarRendasRecorrentes();
 
   return { compras: compras.length, itens: itens.length };
 }

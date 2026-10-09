@@ -11,7 +11,6 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { CampoNumero } from '../componentes/CampoNumero';
@@ -29,9 +28,10 @@ import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
 import { deInputData, formatarData, paraInputData } from '../lib/datas';
 import { useApp } from '../estado';
+import { useVoltar } from '../lib/useVoltar';
 
 export function Contas() {
-  const navegar = useNavigate();
+  const voltar = useVoltar('/carteira');
   const { atualizarPendentes } = useApp();
   const { dados } = useFinanceiro();
   const contas = useLiveQuery(listarContas, [], undefined);
@@ -50,7 +50,7 @@ export function Contas() {
     <div className="app">
       <header className="topo">
         <div className="topo-linha">
-          <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/carteira')}>
+          <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
             ‹
           </button>
           <h1>Contas e cartões</h1>

@@ -96,6 +96,12 @@ export const SEM_DADOS: DadosFinanceiros = {
 /**
  * Quando esta renda cai, de `data` ate `ate`.
  *
+ * LEGADO: entrada agora e um LANCAMENTO (`periodicidade: 'unica'`), e a regra
+ * recorrente deixou de existir na tela. A expansao fica porque (1) a migracao
+ * `materializarRenda` precisa dela para transformar a regra em lancamentos,
+ * e (2) aparelho antigo, backup antigo ou sincronizacao atrasada ainda podem
+ * trazer uma regra `mensal`, que e lida certo ate a migracao rodar de novo.
+ *
  * Recorrencia mensal e anual sao expandidas aqui, respeitando `encerradoEm`. E
  * assim que o aumento de salario funciona sem reescrever o passado: a renda
  * antiga tem fim, a nova tem inicio, e cada mes pega a que estava valendo.
@@ -160,35 +166,91 @@ export function entradasEntre(
   return total;
 }
 
-/** Uma entrada que caiu (ou vai cair) numa data: o lancamento, nao o cadastro. */
-export interface LancamentoDeRenda {
-  /** Estavel entre renderizacoes: a renda e o instante identificam o lancamento. */
-  chave: string;
-  renda: Renda;
-  quando: number;
+/** Entradas que caem num vale, num periodo. O vale nao paga conta nem fatura. */
+export function entradasNoValeEntre(
+  dados: DadosFinanceiros,
+  inicio: number,
+  fim: number,
+): number {
+  return dados.contas
+    .filter((conta) => naoExcluido(conta) && conta.tipo === 'vale')
+    .reduce((soma, conta) => soma + entradasEntre(dados.rendas, inicio, fim, conta.id), 0);
 }
 
 /**
- * Os lancamentos de entrada ate `ate`, do mais recente para o mais antigo.
+ * Entrada de CAIXA num periodo: tudo que entrou, menos o que caiu num vale.
  *
- * Existe porque a renda e guardada como REGRA ("salario, todo dia 5"), e quem
- * procura "o que entrou em agosto" quer a lista de datas, nao a regra. So
- * reorganiza o que `ocorrenciasDeRenda` ja expande — nao soma nada, de
- * proposito: o total do mes tem definicao propria (`ehDeCaixa`, o vale fica
- * fora) e uma segunda soma aqui voltaria a produzir dois numeros quase iguais.
+ * Existe para a definicao ser uma so. O Resumo, a Carteira e a previsao (a media
+ * das entradas, que sustenta o "fecha o mes com") perguntam a mesma coisa, e a
+ * previsao somava tudo, vale incluido, enquanto o Resumo o deixava de fora — a
+ * mesma familia de bug que fez a "sobra" ter quatro sentidos. Quem mexer aqui
+ * mexe nos tres.
  */
-export function lancamentosDeRenda(
+export function entradasDeCaixaEntre(
+  dados: DadosFinanceiros,
+  inicio: number,
+  fim: number,
+): number {
+  return entradasEntre(dados.rendas, inicio, fim) - entradasNoValeEntre(dados, inicio, fim);
+}
+
+/**
+ * Das entradas lancadas, a ultima que ja caiu e a proxima que ainda vai cair.
+ *
+ * E o que cabe num cartao pequeno: "o salario ja caiu? quando cai o proximo?".
+ * `proxima` e a MAIS PROXIMA no futuro, nao a mais distante. Uma entrada e um
+ * lancamento com data: nao ha regra para expandir.
+ */
+export function entradaEmDestaque(
   rendas: readonly Renda[],
-  ate: number,
-): LancamentoDeRenda[] {
-  const saida: LancamentoDeRenda[] = [];
+  agora: number,
+): { ultima: Renda | null; proxima: Renda | null } {
+  let ultima: Renda | null = null;
+  let proxima: Renda | null = null;
   for (const renda of rendas) {
     if (!naoExcluido(renda)) continue;
-    for (const quando of ocorrenciasDeRenda(renda, ate)) {
-      saida.push({ chave: renda.id + ':' + quando, renda, quando });
+    if (renda.data <= agora) {
+      if (ultima === null || renda.data > ultima.data) ultima = renda;
+    } else if (proxima === null || renda.data < proxima.data) {
+      proxima = renda;
     }
   }
-  return saida.sort((a, b) => b.quando - a.quando);
+  return { ultima, proxima };
+}
+
+/**
+ * Transforma uma entrada RECORRENTE legada em lancamentos unicos, um por data
+ * que ja caiu. So le a regra e devolve linhas; quem grava e a porta
+ * (`materializarRendasRecorrentes`, em `financas.ts`), que carimba e poe a
+ * lapide na regra-mae.
+ *
+ * O ID E DETERMINISTICO (`<regra>:<AAAA-MM>`) para que dois aparelhos que migram
+ * a mesma regra produzam as MESMAS linhas, e a sincronizacao as funda em vez de
+ * duplica-las. Cada mes tem no maximo uma ocorrencia (mensal ou anual), entao o
+ * mes basta como chave.
+ *
+ * So entram as ocorrencias ate `agora`: o que ainda ia cair deixa de ser
+ * projetado por regra e passa a ser coberto pela media das entradas. Os numeros
+ * de hoje — saldo, sobra, o que ja entrou — ficam exatamente os mesmos, porque a
+ * data de cada linha e a mesma data que a regra produzia.
+ *
+ * Regra sem nenhuma ocorrencia ate agora (a primeira data ainda e futura) devolve
+ * lista vazia, e a porta a deixa quieta ate a primeira cair.
+ */
+export function materializarRenda(renda: Renda, agora: number): Renda[] {
+  if (renda.periodicidade === 'unica' || !naoExcluido(renda)) return [];
+  return ocorrenciasDeRenda(renda, agora).map((quando) => ({
+    id: `${renda.id}:${chaveDoMes(quando)}`,
+    data: quando,
+    descricao: renda.descricao,
+    origem: renda.origem,
+    valor: renda.valor,
+    periodicidade: 'unica' as const,
+    encerradoEm: null,
+    contaId: renda.contaId,
+    atualizadoEm: renda.atualizadoEm,
+    excluidoEm: null,
+  }));
 }
 
 // -------------------------------------------------------------- presuncao
@@ -210,33 +272,58 @@ export function presumidoAteDoCartao(agora: number): string {
 }
 
 /**
+ * Quantos meses completos antes de `agora` entram na busca do salario. Os tres do
+ * historico da previsao, mais o mes em curso.
+ */
+const MESES_PARA_ACHAR_O_SALARIO = 3;
+
+/**
  * O dia do mes em que o salario cai.
  *
- * A maior renda mensal vigente manda: e ela o salario, e nao um extra recorrente
- * pequeno. `null` quando nao ha nenhuma cadastrada.
+ * Nao ha mais regra mensal para perguntar: entrada e lancamento. O salario e a
+ * MAIOR entrada dos ultimos meses (os tres completos e o corrente), e o dia dele
+ * e o dia do mes. A maior, e nao a mais recente, para um extra pequeno nao
+ * mudar a data em que o consignado sai da conta. Entrada em vale nao conta: e
+ * beneficio, nao salario. `null` quando nao ha nenhuma.
+ *
+ * Le as ocorrencias, e nao so `data`, para continuar certo com uma regra legada
+ * que ainda nao foi migrada.
  */
-export function diaDoSalario(dados: DadosFinanceiros): number | null {
-  const mensais = dados.rendas.filter(
-    (renda) => naoExcluido(renda) && renda.periodicidade === 'mensal' && renda.encerradoEm === null,
-  );
-  if (mensais.length === 0) return null;
-  const principal = mensais.reduce((maior, renda) => (renda.valor > maior.valor ? renda : maior));
-  return new Date(principal.data).getDate();
+export function diaDoSalario(dados: DadosFinanceiros, agora: number): number | null {
+  const ultimoMesDaBusca = mesesCompletosAntes(agora, MESES_PARA_ACHAR_O_SALARIO).at(-1);
+  if (ultimoMesDaBusca === undefined) return null;
+  const desde = intervaloDoMes(ultimoMesDaBusca).inicio;
+
+  let principal: { valor: number; quando: number } | null = null;
+  for (const renda of dados.rendas) {
+    if (!naoExcluido(renda)) continue;
+    if (acharConta(dados.contas, renda.contaId)?.tipo === 'vale') continue;
+    for (const quando of ocorrenciasDeRenda(renda, agora)) {
+      if (quando < desde) continue;
+      const maior =
+        principal === null ||
+        renda.valor > principal.valor ||
+        (renda.valor === principal.valor && quando > principal.quando);
+      if (maior) principal = { valor: renda.valor, quando };
+    }
+  }
+  return principal === null ? null : new Date(principal.quando).getDate();
 }
 
 /**
  * Quando a parcela descontada em folha sai, numa competencia.
  *
- * E a data do salario, porque e ali que o consignado e retido. Sem renda mensal
- * cadastrada, cai no dia de vencimento da propria divida.
+ * E a data do salario, porque e ali que o consignado e retido. Sem entrada
+ * recente, cai no dia de vencimento da propria divida.
  */
 export function dataDoDescontoEmFolha(
   divida: Divida,
   dados: DadosFinanceiros,
   competencia: string,
+  agora: number,
 ): number {
   const { ano, mes } = partesDaChave(competencia);
-  const dia = diaDoSalario(dados) ?? new Date(divida.primeiraEm).getDate();
+  const dia = diaDoSalario(dados, agora) ?? new Date(divida.primeiraEm).getDate();
   return new Date(ano, mes, diaDoMesSeguro(ano, mes, dia), 0, 0, 0, 0).getTime();
 }
 
@@ -255,7 +342,7 @@ export function presumidoAteDaDivida(
   const anterior = somarMeses(chaveDoMes(agora), -1);
   if (!divida.descontoEmFolha) return anterior;
   const mes = chaveDoMes(agora);
-  return agora >= dataDoDescontoEmFolha(divida, dados, mes) ? mes : anterior;
+  return agora >= dataDoDescontoEmFolha(divida, dados, mes, agora) ? mes : anterior;
 }
 
 /**
@@ -295,7 +382,7 @@ function descontosEmFolhaDa(
     // Pagamento registrado ja sai pela transferencia. Presumir de novo aqui
     // tiraria o mesmo dinheiro duas vezes.
     if ((pagoPorCompetencia.get(parcela.competencia) ?? 0) > 0) continue;
-    const quando = dataDoDescontoEmFolha(divida, dados, parcela.competencia);
+    const quando = dataDoDescontoEmFolha(divida, dados, parcela.competencia, agora);
     if (quando < desde || quando > ate) continue;
     total += parcela.valor;
   }
@@ -802,10 +889,8 @@ export function resumoDoMes(dados: DadosFinanceiros, mes: string, agora: number)
   // mexeram em conta nenhuma ainda.
   const ate = Math.min(fim, agora);
 
-  const entradasNoVale = dados.contas
-    .filter((conta) => naoExcluido(conta) && conta.tipo === 'vale')
-    .reduce((soma, conta) => soma + entradasEntre(dados.rendas, inicio, ate, conta.id), 0);
-  const entradas = entradasEntre(dados.rendas, inicio, ate) - entradasNoVale;
+  const entradasNoVale = entradasNoValeEntre(dados, inicio, ate);
+  const entradas = entradasDeCaixaEntre(dados, inicio, ate);
 
   const enviadoAoVale = dados.transferencias
     .filter(

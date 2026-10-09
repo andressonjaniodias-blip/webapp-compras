@@ -25,6 +25,7 @@ import {
   type TransferenciaLocal,
 } from './banco';
 import { MODO_PADRAO, type ModoCategorizacao } from '../../compartilhado/categorizacao';
+import { materializarRenda } from '../../compartilhado/carteira';
 import { chaveDoMes, intervaloDoMes } from '../../compartilhado/fatura';
 import {
   naoExcluido,
@@ -120,8 +121,11 @@ export async function criarRenda(parcial: Partial<Renda> = {}): Promise<string> 
     descricao: parcial.descricao ?? '',
     origem: parcial.origem ?? '',
     valor: parcial.valor ?? 0,
-    periodicidade: parcial.periodicidade ?? 'unica',
-    encerradoEm: parcial.encerradoEm ?? null,
+    // Entrada e LANCAMENTO: nao existe mais regra recorrente. As duas colunas
+    // continuam sendo gravadas, e sempre assim, porque o servidor e os
+    // aparelhos antigos ainda as leem.
+    periodicidade: 'unica',
+    encerradoEm: null,
     contaId: parcial.contaId ?? null,
     ...novo,
     ...carimbo(),
@@ -143,56 +147,48 @@ export async function excluirRenda(id: string): Promise<void> {
 }
 
 /**
- * Aumento de salario, sem estragar o historico.
+ * Transforma as entradas RECORRENTES que ainda existem em lancamentos unicos.
  *
- * Editar o valor no lugar reescreveria o passado: com um aumento em julho,
- * janeiro a junho passariam a valer o valor novo e todo resumo anterior ficaria
- * errado — sem ninguem perceber, porque nada quebra.
+ * A recorrencia foi abandonada: entrada e o que caiu, na data em que caiu. Mas
+ * ha regras ("salario, todo dia 5") gravadas no aparelho e na nuvem, e apaga-las
+ * levaria meses de salario do saldo e do Resumo. Entao cada regra vira uma
+ * entrada unica por data que ja caiu (ver `materializarRenda`), e a regra recebe
+ * a lapide — na MESMA transacao, porque a regra viva ao lado de suas filhas
+ * contaria a primeira data duas vezes.
  *
- * Entao a renda antiga ganha fim no ultimo instante do mes ANTERIOR ao da
- * mudança, e uma nova começa no primeiro instante do mes da mudança. As duas
- * coisas numa transacao so: se a segunda falhasse sozinha, a renda sumiria do
- * mes que vem sem aviso nenhum.
+ * E IDEMPOTENTE e roda de novo na abertura, apos cada sincronizacao e apos
+ * importar um backup: regra legada pode chegar de aparelho atrasado ou de arquivo
+ * antigo. Sem regra legada, nao faz nada. Os ids das filhas sao deterministicos,
+ * entao dois aparelhos que migram a mesma regra geram as mesmas linhas e a nuvem
+ * as funde; filha que ja existe nao e tocada, para a migracao nunca passar por
+ * cima de um valor que voce corrigiu em outro aparelho.
+ *
+ * Fica aqui, e nao num `upgrade` do Dexie, porque as filhas precisam do
+ * `carimbo()` (invariante 5) — registro reescrito sem carimbo nunca sobe — e
+ * porque o `upgrade` roda uma vez, antes do primeiro pull.
+ *
+ * Devolve quantas regras foram transformadas.
  */
-export async function alterarRendaRecorrente(
-  id: string,
-  valorNovo: number,
-  aPartirDe: number,
-): Promise<string | null> {
-  const atual = await banco.rendas.get(id);
-  if (!atual) return null;
+export async function materializarRendasRecorrentes(agora: number = Date.now()): Promise<number> {
+  return banco.transaction('rw', banco.rendas, async () => {
+    const todas = await banco.rendas.toArray();
+    const legadas = todas.filter((r) => naoExcluido(r) && r.periodicidade !== 'unica');
 
-  const mes = chaveDoMes(aPartirDe);
-  const { inicio } = intervaloDoMes(mes);
-  const fimDaAntiga = inicio - 1;
+    let transformadas = 0;
+    for (const regra of legadas) {
+      const filhas = materializarRenda(regra, agora);
+      // Regra cuja primeira data ainda e futura espera: nao ha o que lancar.
+      if (filhas.length === 0) continue;
 
-  // Mudança que começa antes (ou junto) do inicio da renda e correcao, nao
-  // aumento: nao ha passado para preservar.
-  if (fimDaAntiga < atual.data) {
-    await atualizarRenda(id, { valor: valorNovo });
-    return null;
-  }
-
-  const novoId = novoUuid();
-  await banco.transaction('rw', banco.rendas, async () => {
-    await banco.rendas.update(id, { encerradoEm: fimDaAntiga, ...carimbo() });
-    await banco.rendas.add({
-      ...atual,
-      id: novoId,
-      data: inicio,
-      valor: valorNovo,
-      encerradoEm: null,
-      ...novo,
-      ...carimbo(),
-    });
+      for (const filha of filhas) {
+        if (await banco.rendas.get(filha.id)) continue;
+        await banco.rendas.add({ ...filha, ...novo, ...carimbo() });
+      }
+      await banco.rendas.update(regra.id, { excluidoEm: Date.now(), ...carimbo() });
+      transformadas += 1;
+    }
+    return transformadas;
   });
-
-  return novoId;
-}
-
-/** Correcao de erro de digitacao: muda o valor sem cortar a vigencia. */
-export async function corrigirRenda(id: string, valorNovo: number): Promise<void> {
-  await atualizarRenda(id, { valor: valorNovo });
 }
 
 // ----------------------------------------------------------------- dividas
@@ -363,6 +359,7 @@ export async function excluirRegra(id: string): Promise<void> {
 const CHAVE_MODO_SIMPLES = 'modoSimples';
 const CHAVE_MODO_CATEGORIA = 'modoCategorizacao';
 const CHAVE_GASTO_MANUAL = 'gastoEstimadoManual';
+const CHAVE_ENTRADA_MANUAL = 'entradaEstimadaManual';
 
 /**
  * Esconde tudo que e financeiro, independentemente do que exista cadastrado.
@@ -393,4 +390,13 @@ export function lerGastoManual(): Promise<number | null> {
 
 export function gravarGastoManual(centavos: number | null): Promise<void> {
   return gravarConfig(CHAVE_GASTO_MANUAL, centavos);
+}
+
+/** Entrada mensal digitada a mao, em centavos. `null` = usar a media calculada. */
+export function lerEntradaManual(): Promise<number | null> {
+  return lerConfig<number | null>(CHAVE_ENTRADA_MANUAL, null);
+}
+
+export function gravarEntradaManual(centavos: number | null): Promise<void> {
+  return gravarConfig(CHAVE_ENTRADA_MANUAL, centavos);
 }

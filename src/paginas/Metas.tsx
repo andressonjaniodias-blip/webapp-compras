@@ -17,7 +17,6 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { limitesDo } from '../../compartilhado/planos';
 import { panorama, planejarMeta } from '../../compartilhado/previsao';
@@ -27,11 +26,12 @@ import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
 import { deInputDataHora, nomeMes, paraInputDataHora } from '../lib/datas';
 import { useApp } from '../estado';
+import { useVoltar } from '../lib/useVoltar';
 
 export function Metas() {
-  const navegar = useNavigate();
+  const voltar = useVoltar('/carteira');
   const { atualizarPendentes, plano } = useApp();
-  const { dados, gastoManual, carregando } = useFinanceiro();
+  const { dados, gastoManual, entradaManual, carregando } = useFinanceiro();
   const [editando, setEditando] = useState<string | null>(null);
 
   const limites = limitesDo(plano);
@@ -40,6 +40,7 @@ export function Metas() {
     meses: limites.mesesDePrevisao,
     agora,
     gastoManual,
+    entradaManual,
   });
   const sobraMensal = visao.linhas.find((l) => !l.parcial)?.sobra ?? visao.sobraDoMes;
 
@@ -55,7 +56,7 @@ export function Metas() {
     <div className="app">
       <header className="topo">
         <div className="topo-linha">
-          <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/carteira')}>
+          <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
             ‹
           </button>
           <h1>Metas</h1>

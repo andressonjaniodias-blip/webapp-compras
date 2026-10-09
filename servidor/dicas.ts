@@ -34,10 +34,12 @@ import {
 import { chaveDoMes, intervaloDoMes, somarMeses } from '../compartilhado/fatura';
 import { vezesDa } from '../compartilhado/parcelamento';
 import {
+  estimarEntradaMensal,
   estimarGastoCorrente,
   mesesAteAMetaMaisLonga,
   planejarMeta,
   projetar,
+  temBaseDeEntrada,
 } from '../compartilhado/previsao';
 import { modeloValido, type ModeloDeIa } from '../compartilhado/modelos';
 import { normalizarNome, type Compra, type Item } from '../compartilhado/tipos';
@@ -119,6 +121,7 @@ Como o dinheiro se move neste app — errar isto invalida a análise inteira:
 - Uma compra em 12x pesa a PARCELA por mês, não o total. Ao falar de quanto sobra, use a parcela.
 - Pagamento de fatura, parcela de dívida, saque e transferência não são gastos novos: o gasto já foi contado quando a compra foi lançada.
 - O "gasto estimado" da previsão é média histórica, não compromisso. Trate como estimativa e diga que é.
+- O "entra" dos meses futuros também é estimativa: a pessoa não cadastra salário recorrente, e o app usa a média das entradas lançadas nos últimos meses. Diga que é estimativa.
 
 Sobre a previsão, que é o que mais interessa a quem lê:
 
@@ -259,9 +262,12 @@ function blocoDosCompromissos(dados: DadosFinanceiros, agora: number): string {
 function blocoDaPrevisao(dados: DadosFinanceiros, agora: number, meses: number): string {
   const linhas = projetar(dados, { meses, agora });
   const estimativa = estimarGastoCorrente(dados, agora);
+  const entrada = estimarEntradaMensal(dados, agora);
 
-  if (dados.rendas.length === 0) {
-    return 'PREVISÃO: sem renda cadastrada, não há previsão. Não invente uma.';
+  // Sem entrada lancada nos ultimos meses o "entra" da tabela seria zero por falta
+  // de dado, e a IA diria que a pessoa vai ficar sem dinheiro.
+  if (!temBaseDeEntrada(entrada)) {
+    return 'PREVISÃO: sem entradas lançadas nos últimos meses, não há previsão. Não invente uma.';
   }
 
   const tabela = linhas.map(
@@ -278,7 +284,8 @@ function blocoDaPrevisao(dados: DadosFinanceiros, agora: number, meses: number):
   return [
     `PREVISÃO DOS PRÓXIMOS ${linhas.length} MESES`,
     `  gasto corrente estimado: R$ ${reais(estimativa.total)}/mês (fixos R$ ${reais(estimativa.fixo)} + variáveis R$ ${reais(estimativa.variavel)}) — ${qualidade}`,
-    '  o estimado é palpite; o comprometido é certo. Categorias eventuais não entram no estimado.',
+    `  entrada estimada: R$ ${reais(entrada.total)}/mês (média das entradas em conta dos meses completos${entrada.fraca ? '; poucos meses, estimativa fraca' : ''})`,
+    '  o estimado e a entrada estimada são palpite; o comprometido é certo. Categorias eventuais não entram no estimado.',
     ...tabela,
   ].join('\n');
 }

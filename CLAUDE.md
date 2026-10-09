@@ -57,30 +57,44 @@ Rode as três antes de dar qualquer mudança por concluída.
    sempre e só some por escolha explícita (o modo do app, em Ajustes). Esconder
    a porta escondia junto o único caminho para criar a primeira conta — e num
    aparelho novo, antes da primeira sincronização, tornava contas e cartões
-   inalcançáveis. Ver `decisões.md` no cofre. As abas Despesas | Receitas da
-   tela inicial seguem a mesma regra da porta: só somem no modo simples, nunca
-   por falta de dado — a aba Receitas vazia é o caminho até a primeira entrada.
+   inalcançáveis. Ver `decisões.md` no cofre. O painel da tela inicial
+   (`Painel.tsx`) só existe quando já há conta ou entrada; antes disso a tela
+   inicial é a lista de compras, com o 💳 no cabeçalho. Dentro do painel, os
+   cartões são as portas, e cartão sem dado mostra frase neutra e nenhum
+   número. **Todo número do painel vem da mesma função que a página de destino
+   usa** (`resumoDoMes`, `calcularCarteira`, `panorama`, `planejarMeta`,
+   `resumirMes`), nunca de conta feita ali: foi assim que o app chegou a quatro
+   números chamados "sobra".
 10. **Compra no crédito não sai do caixa; a fatura sai.** Pagar a fatura é
     `Transferencia`, e ela nunca conta como gasto novo — o gasto foi contado
     quando a compra foi lançada. Somar os dois é a contagem dupla que o
     `teste:contas` existe para impedir.
 11. **A soma das parcelas é exatamente o total.** R$ 100,00 em 3x são
     33,34 + 33,33 + 33,33; a primeira absorve o resto. Nunca 99,99.
-12. **Renda recorrente é versionada, nunca editada retroativamente.** Aumento
-    encerra a antiga e cria a nova; editar o valor no lugar reescreveria todos
-    os meses anteriores em silêncio.
+12. **Entrada é lançamento, não regra.** Não existe mais renda recorrente nem
+    aumento versionado: quem lança anota o que caiu, na data em que caiu, e o
+    app grava sempre `periodicidade: 'unica'` e `encerradoEm: null`. As colunas
+    ficam no tipo, no banco e na sincronização só como **legado**, porque
+    aparelho antigo e backup ainda podem trazer `mensal`/`anual`. Quem as traz é
+    transformado por `materializarRendasRecorrentes` (`financas.ts`), que roda na
+    abertura, após cada sincronização e após importar backup: uma entrada única
+    por data que já caiu, com **id determinístico** (`<regra>:<AAAA-MM>`, para
+    dois aparelhos gerarem as mesmas linhas) e lápide na regra, na mesma
+    transação. O contrato é que **nenhum número de hoje muda** (seção 7 de
+    `teste:contas`). Não apague `ocorrenciasDeRenda` nem as colunas antes de a
+    migração ter rodado em tudo.
 13. **O saldo de partida é uma DATA, e o corte é por dia.** `saldoInicialEm`
     diz de quando o saldo informado vale; ele só muda quando o usuário muda, e
     `saldoDaConta` compara pela meia-noite daquele dia, com `>=` para renda,
     compra e transferência. Hora nunca decide se dinheiro existe. Enquanto o
     corte era o instante do toque, digitar o saldo engolia em silêncio o que
     tinha sido cadastrado minutos antes.
-14. **Em `ocorrenciasDeRenda`, o piso é o dia e o teto é o instante.** O piso é
-    por dia porque a ocorrência nasce com segundos zerados e `criarRenda` grava
-    `Date.now()`: comparar instantes apagava a primeira ocorrência de toda renda
-    recorrente recém-criada. O teto continua sendo o instante porque a previsão
-    do mês corrente conta o que ainda vai cair e o saldo conta o que já caiu —
-    arredondar o teto faria a mesma parcela ser contada nos dois lados.
+14. **Em `ocorrenciasDeRenda` (leitura legada), o piso é o dia e o teto é o
+    instante.** O piso é por dia porque a ocorrência nasce com segundos zerados
+    e a regra gravava `Date.now()`: comparar instantes apagava a primeira
+    ocorrência. O teto continua sendo o instante porque o saldo conta o que já
+    caiu e a previsão o que ainda vai cair — arredondar o teto faria a mesma
+    entrada ser contada nos dois lados.
 15. **Quem envia e quem recebe transferência está em `compartilhado/tipos.ts`.**
     Origem: corrente e dinheiro. Destino: corrente, dinheiro e vale — o vale
     recebe (o benefício pode cair na corrente) mas nunca envia, porque o cartão
@@ -97,7 +111,9 @@ Rode as três antes de dar qualquer mudança por concluída.
     R$ 60 esconderia rotativo real. `Ciclo.presumido` existe para a tela dizer
     que foi presunção em vez de fingir pagamento.
 17. **Desconto em folha: renda bruta, e a parcela sai da conta na data do
-    salário.** A entrada cadastrada é o salário *antes* do desconto do
+    salário.** O dia do salário é o dia da **maior entrada dos últimos meses**
+    (`diaDoSalario`: os três completos e o corrente, sem contar vale); sem
+    nenhuma, cai no dia da própria dívida. A entrada lançada é o salário *antes* do desconto do
     empréstimo, então o consignado precisa sair de `Divida.contaId` para o
     saldo bater com o extrato — presumir sem descontar faria o saldo subir a
     parcela todo mês, em silêncio. Havendo pagamento registrado na
@@ -112,7 +128,8 @@ Rode as três antes de dar qualquer mudança por concluída.
     três regras: o **vale fica fora dos dois lados** (a recarga não é entrada de
     caixa, a compra no vale não é saída); o que a conta **manda para o vale**
     sai; e o teto das entradas é **agora**, não o fim do mês. "Caixa" tem uma
-    definição só, `ehDeCaixa`, usada pelo saldo e pela sobra.
+    definição só, `ehDeCaixa`, usada pelo saldo e pela sobra. E "entrada de
+    caixa" também: `entradasDeCaixaEntre`, usada pelo Resumo e pela previsão.
 20. **O veredito do simulador é um só, e o limite do cartão entra nele.**
     Compra que o cartão recusa é `estoura`, por mais folga que o mês tenha —
     então `estoura` pode vir sem nenhum mês negativo, e a tela não pode supor
@@ -124,6 +141,17 @@ Rode as três antes de dar qualquer mudança por concluída.
     ela mostrava antes, fica negativa no dia seguinte ao último pagamento do
     mês sem que nada de ruim tenha acontecido. Sem conta de dinheiro o campo é
     `null` e a tela mostra a sobra prevista de um mês cheio (Princípio 0).
+22. **A entrada dos meses que vêm é estimada, e o salário cair não dá degrau.**
+    `estimarEntradaMensal` é a média das entradas de caixa dos três meses
+    completos anteriores, dividida só pelos meses que tiveram entrada, como o
+    gasto típico; o usuário pode digitar o valor (`entradaManual`). Em
+    `projetar`, a entrada de um mês é `max(estimada, lançadas)`, e no mês
+    corrente `max(estimada − já entrou, lançadas futuras)`: o salário só troca
+    "falta entrar" por "já está na conta", e `fechaOMesCom` não se mexe
+    (seção 7c de `teste:contas`). **Sem base** — nenhum mês completo com entrada
+    e nenhum valor digitado (`temBaseDeEntrada`) — não se mostra número de
+    previsão: zero por falta de dado diria "você vai ficar sem dinheiro" sem
+    que seja verdade. A média inclui extras (13º, reembolso); a tela diz isso.
 
 ## Convenções
 

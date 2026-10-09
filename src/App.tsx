@@ -6,7 +6,7 @@
  * classe inteira de bug em que recarregar a pagina dentro do app devolve 404.
  */
 
-import { HashRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Ajustes } from './paginas/Ajustes';
 import { Carteira } from './paginas/Carteira';
 import { Contas } from './paginas/Contas';
@@ -14,10 +14,11 @@ import { Dividas } from './paginas/Dividas';
 import { EditarCompra } from './paginas/EditarCompra';
 import { Entrar } from './paginas/Entrar';
 import { Fatura } from './paginas/Fatura';
+import { Inicio } from './paginas/Inicio';
 import { ListaCompras } from './paginas/ListaCompras';
 import { Metas } from './paginas/Metas';
 import { Parcela } from './paginas/Parcela';
-import { Rendas } from './paginas/Rendas';
+import { Receitas } from './paginas/Receitas';
 import { Resumo } from './paginas/Resumo';
 import { Simular } from './paginas/Simular';
 import { Transferencias } from './paginas/Transferencias';
@@ -38,7 +39,9 @@ function Conteudo() {
 
   return (
     <Routes>
-      <Route path="/" element={<ListaCompras />} />
+      <Route path="/" element={<Inicio />} />
+      <Route path="/compras" element={<ListaCompras />} />
+      <Route path="/receitas" element={<Receitas />} />
       <Route path="/compra/:id" element={<EditarCompra />} />
       <Route path="/resumo" element={<Resumo />} />
       <Route path="/ajustes" element={<Ajustes />} />
@@ -48,13 +51,15 @@ function Conteudo() {
       <Route path="/carteira" element={<Carteira />} />
       <Route path="/simular" element={<Simular />} />
       <Route path="/contas" element={<Contas />} />
-      <Route path="/rendas" element={<Rendas />} />
+      {/* A tela de "Entradas" (a regra recorrente) foi absorvida por Receitas. O
+          redirecionamento existe para link antigo e PWA em cache nao cairem num 404. */}
+      <Route path="/rendas" element={<Navigate to="/receitas" replace />} />
       <Route path="/dividas" element={<Dividas />} />
       <Route path="/transferencias" element={<Transferencias />} />
       <Route path="/metas" element={<Metas />} />
       <Route path="/fatura/:contaId/:competencia" element={<Fatura />} />
       <Route path="/parcela/:dividaId/:competencia" element={<Parcela />} />
-      <Route path="*" element={<ListaCompras />} />
+      <Route path="*" element={<Inicio />} />
     </Routes>
   );
 }

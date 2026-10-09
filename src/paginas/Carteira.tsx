@@ -18,11 +18,11 @@ import { useNavigate } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { TabelaPrevisao } from '../componentes/TabelaPrevisao';
 import { limitesDo } from '../../compartilhado/planos';
-import { mesesAteAMetaMaisLonga, panorama } from '../../compartilhado/previsao';
+import { mesesAteAMetaMaisLonga, panorama, temBaseDeEntrada } from '../../compartilhado/previsao';
 import { resumoDoMes } from '../../compartilhado/carteira';
 import { chaveDoMes } from '../../compartilhado/fatura';
 import { podeEnviar, podeReceber } from '../../compartilhado/tipos';
-import { gravarGastoManual } from '../dados/financas';
+import { gravarEntradaManual, gravarGastoManual } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
 import { formatarData, nomeMes } from '../lib/datas';
@@ -35,8 +35,10 @@ const HORIZONTE = 12;
 export function Carteira() {
   const navegar = useNavigate();
   const { plano, ultimaEm, situacao, sincronizarAgora } = useApp();
-  const { dados, gastoManual, carregando, temContas, temRenda, temDividas } = useFinanceiro();
+  const { dados, gastoManual, entradaManual, carregando, temContas, temRenda, temDividas } =
+    useFinanceiro();
   const [editandoGasto, setEditandoGasto] = useState(false);
+  const [editandoEntrada, setEditandoEntrada] = useState(false);
 
   if (carregando) {
     return (
@@ -59,8 +61,9 @@ export function Carteira() {
   const limites = limitesDo(plano);
   const agora = Date.now();
   const meses = Math.max(HORIZONTE, mesesAteAMetaMaisLonga(dados.metas, agora));
-  const visao = panorama(dados, { meses, agora, gastoManual });
-  const { carteira, estimativa, linhas, mesMaisApertado } = visao;
+  const visao = panorama(dados, { meses, agora, gastoManual, entradaManual });
+  const { carteira, estimativa, estimativaEntrada, linhas, mesMaisApertado } = visao;
+  const temBase = temBaseDeEntrada(estimativaEntrada);
   const mesAtual = chaveDoMes(agora);
   const mesCorrente = resumoDoMes(dados, mesAtual, agora);
 
@@ -175,7 +178,7 @@ export function Carteira() {
             {carteira.rendasSemConta.quantidade} entrada(s) sem conta definida, somando{' '}
             {formatarReais(carteira.rendasSemConta.total)}. Elas ficam fora do saldo até você
             dizer onde caíram.{' '}
-            <button type="button" className="link" onClick={() => navegar('/rendas')}>
+            <button type="button" className="link" onClick={() => navegar('/receitas')}>
               Corrigir
             </button>
           </p>
@@ -300,71 +303,133 @@ export function Carteira() {
 
       <h2 className="secao-titulo">Próximos meses</h2>
 
-      {!temRenda ? (
+      {!temBase && (
         <p className="dica">
-          Cadastre uma entrada para o app poder projetar os próximos meses.{' '}
-          <button type="button" className="link" onClick={() => navegar('/rendas')}>
-            Cadastrar entrada
+          Para projetar os próximos meses o app precisa saber quanto costuma entrar: lance as
+          entradas de alguns meses, ou informe o valor logo abaixo.{' '}
+          <button type="button" className="link" onClick={() => navegar('/receitas')}>
+            Lançar uma entrada
           </button>
         </p>
-      ) : (
-        <>
-          <TabelaPrevisao
-            linhas={linhas}
-            visiveis={limites.mesesDePrevisao}
-            maisApertado={mesMaisApertado}
-          />
+      )}
 
-          <div className="cartao">
-            <div className="fatia-linha">
-              <span>Gasto corrente estimado</span>
-              <span>{formatarReais(estimativa.total)}/mês</span>
-            </div>
-            <p className="dica" style={{ marginTop: 6 }}>
-              {estimativa.manual
-                ? 'Valor que você informou.'
-                : estimativa.fraca
-                  ? `Estimativa fraca: só ${estimativa.mesesUsados} mês(es) de histórico.`
-                  : `Média de ${estimativa.mesesUsados} meses completos — fixos ${formatarReais(estimativa.fixo)} + variáveis ${formatarReais(estimativa.variavel)}.`}{' '}
-              Categorias eventuais (uma geladeira, uma cirurgia) ficam de fora, senão uma compra
-              única viraria previsão para sempre.
-            </p>
+      {temBase && (
+        <TabelaPrevisao
+          linhas={linhas}
+          visiveis={limites.mesesDePrevisao}
+          maisApertado={mesMaisApertado}
+        />
+      )}
 
-            {editandoGasto ? (
-              <div className="campo">
-                <label className="campo-rotulo" htmlFor="gasto">Usar este valor</label>
-                <CampoDinheiro
-                  id="gasto"
-                  valor={gastoManual ?? estimativa.total}
-                  onChange={(centavos) => void gravarGastoManual(centavos)}
-                />
-                <div className="acoes" style={{ marginTop: 8 }}>
-                  <button
-                    type="button"
-                    className="botao"
-                    onClick={() => {
-                      void gravarGastoManual(null);
-                      setEditandoGasto(false);
-                    }}
-                  >
-                    Voltar à média
-                  </button>
-                  <button
-                    type="button"
-                    className="botao botao-primario"
-                    onClick={() => setEditandoGasto(false)}
-                  >
-                    Pronto
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button type="button" className="botao botao-largo" onClick={() => setEditandoGasto(true)}>
-                Ajustar a estimativa
+      {/*
+        A ENTRADA E ESTIMADA, nao cadastrada: ninguem registra "salario, todo dia
+        5". O que vai entrar nos meses que vem e a media dos meses completos
+        anteriores, como o gasto corrente. Fica aqui, ao lado da outra premissa,
+        e esta SEMPRE visivel: com o campo manual a previsao liga no primeiro dia,
+        sem esperar tres meses de historico.
+      */}
+      <div className="cartao">
+        <div className="fatia-linha">
+          <span>Entrada estimada</span>
+          <span>{formatarReais(estimativaEntrada.total)}/mês</span>
+        </div>
+        <p className="dica" style={{ marginTop: 6 }}>
+          {estimativaEntrada.manual
+            ? 'Valor que você informou.'
+            : estimativaEntrada.mesesUsados === 0
+              ? 'Ainda sem entrada lançada nos últimos três meses completos.'
+              : estimativaEntrada.fraca
+                ? `Estimativa fraca: só ${estimativaEntrada.mesesUsados} mês com entrada.`
+                : `Média de ${estimativaEntrada.mesesUsados} meses completos, só do que caiu em conta.`}{' '}
+          Extras como o 13º e reembolsos entram na média; se um mês fugiu do comum, informe o
+          valor que você costuma receber.
+        </p>
+
+        {editandoEntrada ? (
+          <div className="campo">
+            <label className="campo-rotulo" htmlFor="entrada">Usar este valor</label>
+            <CampoDinheiro
+              id="entrada"
+              valor={entradaManual ?? estimativaEntrada.total}
+              onChange={(centavos) => void gravarEntradaManual(centavos)}
+            />
+            <div className="acoes" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="botao"
+                onClick={() => {
+                  void gravarEntradaManual(null);
+                  setEditandoEntrada(false);
+                }}
+              >
+                Voltar à média
               </button>
-            )}
+              <button
+                type="button"
+                className="botao botao-primario"
+                onClick={() => setEditandoEntrada(false)}
+              >
+                Pronto
+              </button>
+            </div>
           </div>
-        </>
+        ) : (
+          <button type="button" className="botao botao-largo" onClick={() => setEditandoEntrada(true)}>
+            Informar quanto costuma entrar
+          </button>
+        )}
+      </div>
+
+      {temBase && (
+        <div className="cartao">
+          <div className="fatia-linha">
+            <span>Gasto corrente estimado</span>
+            <span>{formatarReais(estimativa.total)}/mês</span>
+          </div>
+          <p className="dica" style={{ marginTop: 6 }}>
+            {estimativa.manual
+              ? 'Valor que você informou.'
+              : estimativa.fraca
+                ? `Estimativa fraca: só ${estimativa.mesesUsados} mês(es) de histórico.`
+                : `Média de ${estimativa.mesesUsados} meses completos — fixos ${formatarReais(estimativa.fixo)} + variáveis ${formatarReais(estimativa.variavel)}.`}{' '}
+            Categorias eventuais (uma geladeira, uma cirurgia) ficam de fora, senão uma compra
+            única viraria previsão para sempre.
+          </p>
+
+          {editandoGasto ? (
+            <div className="campo">
+              <label className="campo-rotulo" htmlFor="gasto">Usar este valor</label>
+              <CampoDinheiro
+                id="gasto"
+                valor={gastoManual ?? estimativa.total}
+                onChange={(centavos) => void gravarGastoManual(centavos)}
+              />
+              <div className="acoes" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="botao"
+                  onClick={() => {
+                    void gravarGastoManual(null);
+                    setEditandoGasto(false);
+                  }}
+                >
+                  Voltar à média
+                </button>
+                <button
+                  type="button"
+                  className="botao botao-primario"
+                  onClick={() => setEditandoGasto(false)}
+                >
+                  Pronto
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="botao botao-largo" onClick={() => setEditandoGasto(true)}>
+              Ajustar a estimativa
+            </button>
+          )}
+        </div>
       )}
 
       <h2 className="secao-titulo">Cadastros</h2>
@@ -373,8 +438,8 @@ export function Carteira() {
           <button type="button" className="botao botao-largo" onClick={() => navegar('/contas')}>
             Contas e cartões{temContas ? ` (${dados.contas.length})` : ''}
           </button>
-          <button type="button" className="botao botao-largo" onClick={() => navegar('/rendas')}>
-            Entradas{temRenda ? ` (${dados.rendas.length})` : ''}
+          <button type="button" className="botao botao-largo" onClick={() => navegar('/receitas')}>
+            Receitas{temRenda ? ` (${dados.rendas.length})` : ''}
           </button>
           <button type="button" className="botao botao-largo" onClick={() => navegar('/dividas')}>
             Empréstimos{temDividas ? ` (${dados.dividas.length})` : ''}
@@ -462,13 +527,13 @@ function Ativacao({
           >
             Cadastrar conta ou cartão
           </button>
-          <button type="button" className="botao botao-largo" onClick={() => navegar('/rendas')}>
+          <button type="button" className="botao botao-largo" onClick={() => navegar('/receitas')}>
             Cadastrar uma entrada
           </button>
         </div>
         <p className="dica">
-          Comece pela conta de onde o dinheiro sai. A entrada é o que faz o app projetar os
-          próximos meses.
+          Comece pela conta de onde o dinheiro sai. As entradas que você lança são o que faz o
+          app projetar os próximos meses.
         </p>
       </div>
     </div>

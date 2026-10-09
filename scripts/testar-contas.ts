@@ -19,15 +19,17 @@ import {
   acharConta,
   calcularCarteira,
   compromissos,
+  dataDoDescontoEmFolha,
+  diaDoSalario,
+  entradaEmDestaque,
   faturasDoCartao,
-  lancamentosDeRenda,
+  materializarRenda,
   ocorrenciasDeRenda,
   resumoDoMes,
   saldoDaConta,
   type DadosFinanceiros,
 } from '../compartilhado/carteira';
 import {
-  chaveDoMes,
   competenciaDe,
   diaDoMesSeguro,
   diasAtePagar,
@@ -42,11 +44,13 @@ import {
   valorDaParcela,
 } from '../compartilhado/parcelamento';
 import {
+  estimarEntradaMensal,
   estimarGastoCorrente,
   panorama,
   planejarMeta,
   projetar,
   simular,
+  temBaseDeEntrada,
 } from '../compartilhado/previsao';
 import { limitesDo } from '../compartilhado/planos';
 import { MODELO_DE_IA_PADRAO, MODELOS_DE_IA, modeloValido } from '../compartilhado/modelos';
@@ -141,12 +145,33 @@ function renda(parcial: Partial<Renda> = {}): Renda {
     descricao: '',
     origem: 'Salário',
     valor: parcial.valor ?? 300000,
-    periodicidade: parcial.periodicidade ?? 'mensal',
+    // Entrada e lancamento: o padrao e `unica`. Regra recorrente so existe nos
+    // testes da migracao, onde ela e pedida por extenso.
+    periodicidade: parcial.periodicidade ?? 'unica',
     encerradoEm: parcial.encerradoEm ?? null,
     contaId: parcial.contaId ?? null,
     atualizadoEm: 0,
     excluidoEm: null,
   };
+}
+
+/**
+ * O que a pessoa faz agora: uma entrada por mes, na data em que ela cai.
+ * `de` e `ate` sao competencias ("2026-06"), as duas incluidas.
+ */
+function salarios(
+  de: string,
+  ate: string,
+  dia: number,
+  valor: number,
+  resto: Partial<Renda> = {},
+): Renda[] {
+  const lista: Renda[] = [];
+  for (let mes = de; mes <= ate; mes = somarMeses(mes, 1)) {
+    const [ano, m] = mes.split('-').map(Number) as [number, number];
+    lista.push(renda({ ...resto, data: T(ano, m, dia, 8), valor }));
+  }
+  return lista;
 }
 
 function divida(parcial: Partial<Divida> = {}): Divida {
@@ -529,9 +554,9 @@ console.log('\n6b. Divida que começou no passado');
     saldoInicial: 100000,
     saldoInicialEm: T(2026, 9, 1),
   });
-  const salario = renda({ data: T(2025, 1, 5), valor: 300000, periodicidade: 'mensal', contaId: 'cc' });
+  const salario = salarios('2026-06', '2026-09', 5, 300000, { contaId: 'cc' });
   const emFolha = { ...emprestimo, descontoEmFolha: true, contaId: 'cc' };
-  const comFolha = dados({ contas: [cc], rendas: [salario], dividas: [emFolha] });
+  const comFolha = dados({ contas: [cc], rendas: salario, dividas: [emFolha] });
 
   igual(
     'desconto em folha ja conta o mes corrente como pago',
@@ -544,7 +569,7 @@ console.log('\n6b. Divida que começou no passado');
     100000 + 300000 - 50000,
   );
 
-  const semConta = dados({ contas: [cc], rendas: [salario], dividas: [{ ...emFolha, contaId: null }] });
+  const semConta = dados({ contas: [cc], rendas: salario, dividas: [{ ...emFolha, contaId: null }] });
   igual(
     'sem conta informada, o desconto nao mexe em saldo nenhum',
     saldoDaConta(cc, semConta, AGORA).saldo,
@@ -553,7 +578,7 @@ console.log('\n6b. Divida que começou no passado');
 
   const comPagamento = dados({
     contas: [cc],
-    rendas: [salario],
+    rendas: salario,
     dividas: [emFolha],
     transferencias: [
       transferencia({
@@ -573,7 +598,7 @@ console.log('\n6b. Divida que começou no passado');
   );
 
   // -------------------------------------------- sem desconto em folha: lembra
-  const porConta = dados({ contas: [cc], rendas: [salario], dividas: [{ ...emprestimo, contaId: 'cc' }] });
+  const porConta = dados({ contas: [cc], rendas: salario, dividas: [{ ...emprestimo, contaId: 'cc' }] });
   const cicloDoMes = compromissos(porConta, AGORA)[0]!.ciclos.find(
     (c) => c.competencia === '2026-09',
   );
@@ -599,93 +624,311 @@ console.log('\n6b. Divida que começou no passado');
   );
 }
 
-// ===================================================== 7. renda que muda
+// ==================================== 7. a migracao da recorrencia das entradas
 
-console.log('\n7. Aumento de salario, sem buraco e sem mes dobrado');
+/*
+ * A recorrencia foi abandonada: entrada e lancamento. Mas ha regras antigas
+ * gravadas, e apaga-las levaria meses de salario do saldo e do Resumo. A migracao
+ * as transforma em lancamentos unicos por data que ja caiu — e o contrato dela e
+ * que NENHUM NUMERO DE HOJE MUDA. E o que este teste confere, com os casos que
+ * mais costumam estragar: aumento (a renda nova no dia 1, como a tela antiga a
+ * criava), dia 31, anual, e saldo de partida no meio do periodo.
+ */
+console.log('\n7. A migracao da recorrencia: cada regra vira lancamentos, e nenhum numero muda');
 {
-  const antiga = renda({ data: T(2026, 1, 5), valor: 300000, encerradoEm: T(2026, 6, 30, 23) });
-  const nova = renda({ data: T(2026, 7, 1), valor: 340000, encerradoEm: null });
+  const AGORA = T(2026, 10, 8);
+  const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 100000, saldoInicialEm: T(2026, 3, 10) });
 
-  const junho = ocorrenciasDeRenda(antiga, T(2026, 12, 31)).filter(
-    (ms) => chaveDoMes(ms) === '2026-06',
-  );
-  const julhoAntiga = ocorrenciasDeRenda(antiga, T(2026, 12, 31)).filter(
-    (ms) => chaveDoMes(ms) === '2026-07',
-  );
-  const julhoNova = ocorrenciasDeRenda(nova, T(2026, 12, 31)).filter(
-    (ms) => chaveDoMes(ms) === '2026-07',
-  );
+  const antiga = renda({
+    id: 'antiga', data: T(2026, 1, 5), valor: 300000, periodicidade: 'mensal',
+    encerradoEm: T(2026, 6, 30, 23), contaId: 'cc',
+  });
+  // A renda nova nasceu no dia 1 a meia-noite (assim `alterarRendaRecorrente` a criava).
+  const nova = renda({
+    id: 'nova', data: T(2026, 7, 1, 0), valor: 340000, periodicidade: 'mensal', contaId: 'cc',
+  });
+  const decimo = renda({
+    id: 'dec', data: T(2025, 12, 20), valor: 300000, periodicidade: 'anual', contaId: 'cc',
+  });
+  const dia31 = renda({
+    id: 'd31', data: T(2026, 1, 31), valor: 10000, periodicidade: 'mensal', contaId: 'cc',
+  });
+  const extra = renda({ id: 'ext', data: T(2026, 9, 12), valor: 50000, contaId: 'cc' });
+  const antes = dados({ contas: [cc], rendas: [antiga, nova, decimo, dia31, extra] });
 
-  igual('junho tem uma ocorrencia da renda antiga', junho.length, 1);
-  igual('a antiga nao alcanca julho', julhoAntiga.length, 0);
-  igual('e a nova cobre julho', julhoNova.length, 1);
+  // A mesma coisa que a porta faz, em memoria: filhas mais a lapide na mae.
+  const migrar = (d: DadosFinanceiros, agora: number): DadosFinanceiros => {
+    const rendas: Renda[] = [];
+    for (const r of d.rendas) {
+      const filhas = materializarRenda(r, agora);
+      if (filhas.length === 0) rendas.push(r);
+      else rendas.push({ ...r, excluidoEm: 1 }, ...filhas);
+    }
+    return { ...d, rendas };
+  };
+  const depois = migrar(antes, AGORA);
+  const vivas = depois.rendas.filter((r) => r.excluidoEm === null);
 
-  const base = dados({ rendas: [antiga, nova] });
-  const seisMeses = ['2026-05', '2026-06', '2026-07', '2026-08'].map(
-    (mes) => resumoDoMes(base, mes, T(2026, 12, 31)).entradas,
-  );
-  igual('maio ainda vale 3000', seisMeses[0], 300000);
-  igual('junho ainda vale 3000', seisMeses[1], 300000);
-  igual('julho ja vale 3400 — uma vez so', seisMeses[2], 340000);
-  igual('agosto vale 3400', seisMeses[3], 340000);
+  igual('nao sobra nenhuma regra recorrente viva', vivas.filter((r) => r.periodicidade !== 'unica').length, 0);
+  // 6 (antiga) + 4 (nova, jul a out) + 1 (13o) + 9 (dia 31, jan a set) + o extra
+  igual('uma entrada unica por data que ja caiu', vivas.length, 6 + 4 + 1 + 9 + 1);
 
-  let anoTodo = 0;
-  for (let m = 1; m <= 12; m += 1) {
-    anoTodo += resumoDoMes(base, `2026-${String(m).padStart(2, '0')}`, T(2026, 12, 31)).entradas;
+  for (const mes of ['2026-03', '2026-05', '2026-07', '2026-09', '2026-10']) {
+    const a = resumoDoMes(antes, mes, AGORA);
+    const d = resumoDoMes(depois, mes, AGORA);
+    igual(`${mes}: as entradas sao as mesmas`, d.entradas, a.entradas);
+    igual(`${mes}: a sobra e a mesma`, d.sobra, a.sobra);
   }
-  igual('o ano soma 6 x 3000 + 6 x 3400, sem duplicar', anoTodo, 6 * 300000 + 6 * 340000);
+  igual(
+    'o saldo da conta e o mesmo',
+    saldoDaConta(cc, depois, AGORA).saldo,
+    saldoDaConta(cc, antes, AGORA).saldo,
+  );
+  igual(
+    'o saldo em conta da carteira e o mesmo',
+    calcularCarteira(depois, AGORA).saldoEmConta,
+    calcularCarteira(antes, AGORA).saldoEmConta,
+  );
 
-  const decimo = renda({ data: T(2026, 12, 20), valor: 300000, periodicidade: 'anual' });
-  const comDecimo = dados({ rendas: [decimo] });
-  igual('o 13o cai em dezembro', resumoDoMes(comDecimo, '2026-12', T(2027, 12, 31)).entradas, 300000);
-  igual('e nao cai em novembro', resumoDoMes(comDecimo, '2026-11', T(2027, 12, 31)).entradas, 0);
-  igual('cai de novo no dezembro seguinte', resumoDoMes(comDecimo, '2027-12', T(2028, 1, 5)).entradas, 300000);
+  // ------------------------------------------------------ o que ela gera
+  const filhasDaNova = materializarRenda(nova, AGORA);
+  igual(
+    'os ids sao deterministicos: regra e mes',
+    filhasDaNova.map((f) => f.id).join(','),
+    'nova:2026-07,nova:2026-08,nova:2026-09,nova:2026-10',
+  );
+  igual(
+    'e iguais a cada chamada, para dois aparelhos gerarem as mesmas linhas',
+    materializarRenda(nova, AGORA).map((f) => f.id).join(','),
+    filhasDaNova.map((f) => f.id).join(','),
+  );
+  conferir('so entra o que ja caiu', filhasDaNova.every((f) => f.data <= AGORA));
+  igual(
+    'dia 31 em fevereiro cai no 28',
+    new Date(materializarRenda(dia31, AGORA).find((f) => f.id === 'd31:2026-02')!.data).getDate(),
+    28,
+  );
+  igual(
+    'a filha leva o valor e a conta da regra',
+    [filhasDaNova[0]!.valor, filhasDaNova[0]!.contaId].join('|'),
+    '340000|cc',
+  );
+  conferir(
+    'a filha e unica e sem fim',
+    filhasDaNova.every((f) => f.periodicidade === 'unica' && f.encerradoEm === null),
+  );
+  igual('uma entrada unica nao e tocada', materializarRenda(extra, AGORA).length, 0);
+  igual(
+    'regra cuja primeira data ainda e futura espera',
+    materializarRenda(renda({ data: T(2026, 12, 5), periodicidade: 'mensal' }), AGORA).length,
+    0,
+  );
 
-  const unica = renda({ data: T(2026, 3, 10), valor: 50000, periodicidade: 'unica' });
-  igual('renda unica cai uma vez so', ocorrenciasDeRenda(unica, T(2027, 12, 31)).length, 1);
+  // ------------------------------------------------------- idempotencia
+  igual('rodar de novo nao muda nada', migrar(depois, AGORA).rendas.length, depois.rendas.length);
+
+  // O 13o chega de uma vez na regra legada e e lido certo ate migrar.
+  igual('o 13o anual cai uma vez por ano', ocorrenciasDeRenda(decimo, T(2026, 12, 31)).length, 2);
 }
 
-// ============================================ 7b. a lista de lancamentos
+// ========================================= 7b. a entrada estimada pela media
 
-console.log('\n7b. Lancamentos de entrada: a lista por data, nao o cadastro');
+console.log('\n7b. A entrada estimada: media dos meses completos, so de caixa');
 {
-  const antiga = renda({ id: 'antiga', data: T(2026, 1, 5), valor: 300000, encerradoEm: T(2026, 6, 30, 23) });
-  const nova = renda({ id: 'nova', data: T(2026, 7, 5), valor: 340000 });
-  const extra = renda({ id: 'extra', data: T(2026, 3, 10), valor: 50000, periodicidade: 'unica' });
-  const apagada = { ...renda({ id: 'apagada', data: T(2026, 2, 1) }), excluidoEm: 1 };
+  const AGORA = T(2026, 10, 8);
+  const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 1, 1) });
+  const vale = conta({ id: 'vale', tipo: 'vale', saldoInicial: 0, saldoInicialEm: T(2026, 1, 1) });
 
-  const lista = lancamentosDeRenda([antiga, nova, extra, apagada], T(2026, 9, 30));
+  const jul = salarios('2026-07', '2026-07', 5, 300000, { contaId: 'cc' });
+  const ago = salarios('2026-08', '2026-08', 5, 340000, { contaId: 'cc' });
+  const set = salarios('2026-09', '2026-09', 5, 320000, { contaId: 'cc' });
+  const historico = dados({ contas: [cc, vale], rendas: [...jul, ...ago, ...set] });
 
-  // jan-jun da antiga (6) + jul-set da nova (3) + o extra (1)
-  igual('uma linha por data em que caiu', lista.length, 10);
-  igual('a excluida nao aparece', lista.some((l) => l.renda.id === 'apagada'), false);
+  const e = estimarEntradaMensal(historico, AGORA);
+  igual('a media dos tres meses completos', e.total, 320000);
+  igual('usa os tres meses', e.mesesUsados, 3);
+  conferir('com tres meses nao e estimativa fraca', !e.fraca);
+  conferir('e nao e manual', !e.manual);
+  conferir('ha base de entrada', temBaseDeEntrada(e));
+
   igual(
-    'do mais recente para o mais antigo',
-    lista.every((l, i) => i === 0 || lista[i - 1]!.quando >= l.quando),
-    true,
-  );
-  igual('o primeiro e o de setembro, da renda nova', lista[0]?.renda.id, 'nova');
-  igual(
-    'cada mes tem um lancamento so, sem dobrar a virada',
-    lista.filter((l) => chaveDoMes(l.quando) === '2026-07' && l.renda.periodicidade === 'mensal').length,
-    1,
-  );
-  igual(
-    'janeiro ainda mostra o valor antigo',
-    lista.find((l) => chaveDoMes(l.quando) === '2026-01')?.renda.valor,
-    300000,
-  );
-  igual(
-    'julho ja mostra o valor novo',
-    lista.find((l) => chaveDoMes(l.quando) === '2026-07')?.renda.valor,
-    340000,
+    'o mes corrente nao entra na media',
+    estimarEntradaMensal(
+      dados({
+        contas: [cc],
+        rendas: [...jul, ...ago, ...set, renda({ data: T(2026, 10, 5), valor: 999999, contaId: 'cc' })],
+      }),
+      AGORA,
+    ).total,
+    320000,
   );
   igual(
-    'as chaves sao todas distintas',
-    new Set(lista.map((l) => l.chave)).size,
-    lista.length,
+    'mes sem entrada nao puxa a media para baixo',
+    estimarEntradaMensal(dados({ contas: [cc], rendas: [...jul, ...set] }), AGORA).total,
+    310000,
   );
-  igual('sem renda nao ha lancamento', lancamentosDeRenda([], T(2026, 9, 30)).length, 0);
+  igual(
+    'recarga de vale nao entra na media',
+    estimarEntradaMensal(
+      dados({
+        contas: [cc, vale],
+        rendas: [...jul, ...ago, ...set, ...salarios('2026-07', '2026-09', 1, 80000, { contaId: 'vale' })],
+      }),
+      AGORA,
+    ).total,
+    320000,
+  );
+
+  const semHistorico = estimarEntradaMensal(dados({ contas: [cc] }), AGORA);
+  igual('sem entrada nenhuma a estimativa e zero', semHistorico.total, 0);
+  conferir('e nao ha base', !temBaseDeEntrada(semHistorico));
+  const umMes = estimarEntradaMensal(dados({ contas: [cc], rendas: set }), AGORA);
+  conferir('um mes so e estimativa fraca, mas ha base', umMes.fraca && temBaseDeEntrada(umMes));
+
+  const manual = estimarEntradaMensal(historico, AGORA, 450000);
+  igual('o valor digitado manda', manual.total, 450000);
+  conferir('e e marcado como manual, com base', manual.manual && temBaseDeEntrada(manual));
+  igual('zero digitado tambem vale', estimarEntradaMensal(historico, AGORA, 0).total, 0);
+}
+
+// ===================== 7c. a previsao com entrada estimada, sem degrau
+
+console.log('\n7c. A previsao: o salario cair nao da degrau');
+{
+  const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 100000, saldoInicialEm: T(2026, 6, 1) });
+  const vale = conta({ id: 'vale', tipo: 'vale', saldoInicial: 0, saldoInicialEm: T(2026, 6, 1) });
+  const historico = salarios('2026-07', '2026-09', 5, 350000, { contaId: 'cc' });
+
+  const dia4 = panorama(dados({ contas: [cc], rendas: historico }), { meses: 3, agora: T(2026, 10, 4, 12) });
+  const salarioDeOutubro = renda({ data: T(2026, 10, 5, 8), valor: 350000, contaId: 'cc' });
+  const dia6 = panorama(
+    dados({ contas: [cc], rendas: [...historico, salarioDeOutubro] }),
+    { meses: 3, agora: T(2026, 10, 6, 12) },
+  );
+
+  igual('no dia 4 o salario de outubro ainda e esperado', dia4.linhas[0]!.entradas, 350000);
+  igual('no dia 6 ele ja esta na conta e nao falta entrar nada', dia6.linhas[0]!.entradas, 0);
+  igual('o saldo previsto para o fim do mes nao da degrau', dia6.fechaOMesCom, dia4.fechaOMesCom);
+  igual('e vale o saldo mais o que falta entrar', dia4.fechaOMesCom, 100000 + 3 * 350000 + 350000);
+
+  igual('o mes seguinte espera a entrada tipica', dia6.linhas[1]!.entradas, 350000);
+
+  const comExtra = panorama(
+    dados({
+      contas: [cc],
+      rendas: [...historico, salarioDeOutubro, renda({ data: T(2026, 10, 25), valor: 500000, contaId: 'cc' })],
+    }),
+    { meses: 3, agora: T(2026, 10, 6, 12) },
+  );
+  igual('entrada lancada com data futura vale quando e maior', comExtra.linhas[0]!.entradas, 500000);
+
+  const semBase = panorama(dados({ contas: [cc] }), { meses: 3, agora: T(2026, 10, 6, 12) });
+  igual('sem historico nao ha entrada prevista', semBase.linhas[1]!.entradas, 0);
+  conferir('e a estimativa avisa que nao ha base', !temBaseDeEntrada(semBase.estimativaEntrada));
+
+  const manual = projetar(dados({ contas: [cc] }), { meses: 3, agora: T(2026, 10, 6, 12), entradaManual: 400000 });
+  igual('a entrada digitada alimenta a previsao', manual[1]!.entradas, 400000);
+
+  const comVale = panorama(
+    dados({
+      contas: [cc, vale],
+      rendas: [...historico, ...salarios('2026-07', '2026-09', 1, 80000, { contaId: 'vale' })],
+    }),
+    { meses: 3, agora: T(2026, 10, 6, 12) },
+  );
+  igual('recarga de vale nao vira entrada prevista', comVale.linhas[1]!.entradas, 350000);
+}
+
+// ==================== 7d. o dia do salario sem regra, e a entrada em destaque
+
+console.log('\n7d. O dia do salario vem das entradas, e o cartao mostra a ultima e a proxima');
+{
+  const AGORA = T(2026, 10, 8);
+  const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 1, 1) });
+  const vale = conta({ id: 'vale', tipo: 'vale', saldoInicial: 0, saldoInicialEm: T(2026, 1, 1) });
+  const salario = salarios('2026-07', '2026-10', 5, 350000, { contaId: 'cc' });
+
+  igual('o dia do salario e o da maior entrada recente', diaDoSalario(dados({ contas: [cc], rendas: salario }), AGORA), 5);
+  igual(
+    'um extra pequeno nao muda o dia',
+    diaDoSalario(
+      dados({ contas: [cc], rendas: [...salario, renda({ data: T(2026, 9, 20), valor: 50000, contaId: 'cc' })] }),
+      AGORA,
+    ),
+    5,
+  );
+  igual(
+    'beneficio em vale nao e salario',
+    diaDoSalario(
+      dados({
+        contas: [cc, vale],
+        rendas: [...salario, renda({ data: T(2026, 9, 1), valor: 900000, contaId: 'vale' })],
+      }),
+      AGORA,
+    ),
+    5,
+  );
+  igual(
+    'entrada de ha mais de tres meses nao conta',
+    diaDoSalario(
+      dados({ contas: [cc], rendas: [renda({ data: T(2026, 1, 5), valor: 350000, contaId: 'cc' })] }),
+      AGORA,
+    ),
+    null,
+  );
+  igual(
+    'empate de valor: vale a mais recente',
+    diaDoSalario(
+      dados({
+        contas: [cc],
+        rendas: [
+          renda({ data: T(2026, 8, 10), valor: 100000, contaId: 'cc' }),
+          renda({ data: T(2026, 9, 20), valor: 100000, contaId: 'cc' }),
+        ],
+      }),
+      AGORA,
+    ),
+    20,
+  );
+  igual('sem entrada nao ha dia', diaDoSalario(dados({ contas: [cc] }), AGORA), null);
+
+  const consignado = divida({
+    descontoEmFolha: true,
+    contaId: 'cc',
+    primeiraEm: T(2026, 7, 17),
+    valorTotal: 120000,
+    parcelas: 12,
+  });
+  igual(
+    'o consignado sai no dia do salario',
+    new Date(dataDoDescontoEmFolha(consignado, dados({ contas: [cc], rendas: salario }), '2026-10', AGORA)).getDate(),
+    5,
+  );
+  igual(
+    'sem entrada recente cai no dia da propria divida',
+    new Date(dataDoDescontoEmFolha(consignado, dados({ contas: [cc] }), '2026-10', AGORA)).getDate(),
+    17,
+  );
+
+  // ---------------------------------------------------------- em destaque
+  const sal = renda({ id: 'sal', data: T(2026, 10, 5), valor: 350000 });
+  const ale = renda({ id: 'ale', data: T(2026, 10, 25), valor: 80000 });
+  const dia8 = entradaEmDestaque([sal, ale], AGORA);
+  igual('no dia 8 a ultima e o salario do dia 5', dia8.ultima?.id, 'sal');
+  igual('e a proxima e a do dia 25', dia8.proxima?.id, 'ale');
+  const dia30 = entradaEmDestaque([sal, ale], T(2026, 10, 30));
+  igual('no dia 30 a ultima e a do dia 25', dia30.ultima?.id, 'ale');
+  igual('e nao ha proxima', dia30.proxima, null);
+  const soFutura = entradaEmDestaque([ale], T(2026, 10, 1));
+  igual('so futura: nao ha ultima', soFutura.ultima, null);
+  igual('so futura: a proxima e ela', soFutura.proxima?.id, 'ale');
+  igual(
+    'a proxima e a mais proxima, nao a mais distante',
+    entradaEmDestaque([ale, renda({ id: 'dez', data: T(2026, 12, 5) }), sal], AGORA).proxima?.id,
+    'ale',
+  );
+  igual('excluida nao conta', entradaEmDestaque([{ ...sal, excluidoEm: 1 }], AGORA).ultima, null);
+  igual('sem nada nao ha nenhuma das duas', entradaEmDestaque([], AGORA).proxima, null);
 }
 
 // ================================================= 8. saldo e compra solta
@@ -731,8 +974,8 @@ console.log('\n8b. Entradas somam no saldo, e a hora nao decide');
 {
   const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 9, 1) });
 
-  const salario = renda({ data: T(2026, 9, 5), valor: 300000, periodicidade: 'mensal', contaId: 'cc' });
-  const extra = renda({ data: T(2026, 9, 12), valor: 50000, periodicidade: 'unica', contaId: 'cc' });
+  const salario = renda({ data: T(2026, 9, 5), valor: 300000, contaId: 'cc' });
+  const extra = renda({ data: T(2026, 9, 12), valor: 50000, contaId: 'cc' });
   const base = dados({ contas: [cc], rendas: [salario, extra] });
 
   igual('salario e extra somam no saldo da conta', saldoDaConta(cc, base, T(2026, 9, 30)).saldo, 350000);
@@ -766,15 +1009,16 @@ console.log('\n8b. Entradas somam no saldo, e a hora nao decide');
   );
 
   /*
-   * A regressao mais cara desta rodada, e a que a propria fabrica de teste
-   * escondia: `T()` monta datas com segundos zerados, mas `criarRenda` grava
+   * LEITURA LEGADA. A regressao mais cara de uma rodada anterior, e a que a
+   * propria fabrica de teste escondia (a recorrencia foi abandonada, mas a regra
+   * antiga ainda e lida ate a migracao rodar): `T()` monta datas com segundos zerados, mas `criarRenda` grava
    * `Date.now()`, que tem segundos. A ocorrencia e montada com segundos em zero,
    * entao ela caia uns segundos ANTES de `renda.data` e era descartada — toda
    * renda recorrente recem-cadastrada contava zero no proprio mes.
    */
   const comSegundos = T(2026, 9, 5) + 37_000;
   igual(
-    'renda recorrente criada com segundos conta no proprio mes',
+    'regra recorrente legada, criada com segundos, conta no proprio mes',
     ocorrenciasDeRenda(
       renda({ data: comSegundos, valor: 300000, periodicidade: 'mensal' }),
       T(2026, 9, 30),
@@ -864,9 +1108,10 @@ console.log('\n10. A previsao');
   const agora = T(2026, 9, 1, 0);
   const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 100000, saldoInicialEm: T(2026, 8, 31) });
   const cartao = conta({ id: 'cartao', tipo: 'credito', diaFechamento: 20, diaVencimento: 27 });
-  const salario = renda({ data: T(2026, 1, 5), valor: 300000, periodicidade: 'mensal' });
+  // Tres meses de salario lancado: e deles que a previsao tira a entrada tipica.
+  const salario = salarios('2026-06', '2026-08', 5, 300000);
 
-  const base = dados({ contas: [cc, cartao], rendas: [salario] });
+  const base = dados({ contas: [cc, cartao], rendas: salario });
   const linhas = projetar(base, { meses: 12, agora });
 
   igual('doze linhas', linhas.length, 12);
@@ -927,14 +1172,17 @@ console.log('\n10b. O numero da tela inicial nao troca de sinal no dia do pagame
   // O saldo previsto para o fim do mes nao tem esse degrau: o salario so muda
   // de lugar, de "vai entrar" para "ja esta na conta".
   const cc = conta({ id: 'cc10', tipo: 'corrente', saldoInicial: 50000, saldoInicialEm: T(2026, 9, 30) });
-  const salario = renda({ data: T(2026, 1, 5), valor: 350000, contaId: 'cc10' });
+  const salario = salarios('2026-07', '2026-09', 5, 350000, { contaId: 'cc10' });
   const historico = [7, 8, 9].map((mes) =>
     compra({ data: T(2026, mes, 10), total: 120000, contaId: 'cc10' }),
   );
-  const d = dados({ contas: [cc], rendas: [salario], compras: historico });
+  // No dia 4 o salario de outubro nao caiu; no dia 6 ja foi lancado.
+  const salarioDeOutubro = renda({ data: T(2026, 10, 5, 8), valor: 350000, contaId: 'cc10' });
+  const dDia4 = dados({ contas: [cc], rendas: salario, compras: historico });
+  const dDia6 = dados({ contas: [cc], rendas: [...salario, salarioDeOutubro], compras: historico });
 
-  const dia4 = panorama(d, { meses: 12, agora: T(2026, 10, 4) });
-  const dia6 = panorama(d, { meses: 12, agora: T(2026, 10, 6) });
+  const dia4 = panorama(dDia4, { meses: 12, agora: T(2026, 10, 4) });
+  const dia6 = panorama(dDia6, { meses: 12, agora: T(2026, 10, 6) });
 
   conferir('no dia 4 a sobra parcial e positiva: o salario ainda vai cair', dia4.sobraDoMes > 0, String(dia4.sobraDoMes));
   conferir('no dia 6 ela fica negativa, so porque o salario caiu', dia6.sobraDoMes < 0, String(dia6.sobraDoMes));
@@ -974,8 +1222,8 @@ console.log('\n11. O simulador');
   const agora = T(2026, 9, 1, 0);
   const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 100000, saldoInicialEm: T(2026, 8, 31) });
   const cartao = conta({ id: 'cartao', tipo: 'credito', diaFechamento: 20, diaVencimento: 27, limite: 500000 });
-  const salario = renda({ data: T(2026, 1, 5), valor: 300000, periodicidade: 'mensal' });
-  const base = dados({ contas: [cc, cartao], rendas: [salario] });
+  const salario = salarios('2026-06', '2026-08', 5, 300000);
+  const base = dados({ contas: [cc, cartao], rendas: salario });
   const opcoes = { meses: 12, agora };
 
   const pequena = simular(base, { valor: 5000, contaId: 'cartao', parcelas: 1, data: agora, categoria: 'Mercado' }, opcoes);
@@ -1015,7 +1263,7 @@ console.log('\n11. O simulador');
 
   // Limite zero e "nao informado", nao "sem limite nenhum": sem o dado, o
   // veredito nao pode acusar estouro.
-  const semLimite = dados({ contas: [cc, conta({ id: 'livre', tipo: 'credito', limite: 0 })], rendas: [salario] });
+  const semLimite = dados({ contas: [cc, conta({ id: 'livre', tipo: 'credito', limite: 0 })], rendas: salario });
   const livre = simular(semLimite, { valor: 600000, contaId: 'livre', parcelas: 12, data: agora, categoria: 'Casa' }, opcoes);
   igual('cartao sem limite informado nao estoura por limite', livre.veredito, 'cabe');
 
@@ -1084,7 +1332,7 @@ console.log('\n12. As metas, nos dois sentidos');
   // A reserva tem que aparecer como saida comprometida na projecao.
   const base = dados({
     contas: [conta({ id: 'cc', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 8, 1) })],
-    rendas: [renda({ data: T(2026, 1, 5), valor: 300000 })],
+    rendas: salarios('2026-06', '2026-08', 5, 300000),
     metas: [meta],
   });
   const semMeta = projetar({ ...base, metas: [] }, { meses: 6, agora });
@@ -1332,7 +1580,7 @@ console.log('\n17. O razao do mes fecha');
 {
   const corrente = conta({ apelido: 'Corrente', tipo: 'corrente' });
   const cartao = conta({ apelido: 'Cartao', tipo: 'credito', diaFechamento: 20, diaVencimento: 27 });
-  const salario = renda({ contaId: corrente.id, valor: 300000 });
+  const salario = renda({ data: T(2026, 9, 5), contaId: corrente.id, valor: 300000 });
   const agora = T(2026, 9, 30);
 
   // Fatura de agosto: compra de R$ 100 no credito, no dia 10.
@@ -1419,7 +1667,7 @@ console.log('\n17. O razao do mes fecha');
   // A IDENTIDADE DO RAZAO. Toda linha que a tela desenha esta aqui; se alguem
   // acrescentar um termo a `sobra` sem dar linha a ele no Resumo, isto falha.
   const vale = conta({ apelido: 'Vale', tipo: 'vale' });
-  const recarga = renda({ contaId: vale.id, valor: 35000 });
+  const recarga = renda({ data: T(2026, 9, 5), contaId: vale.id, valor: 35000 });
   const composto = resumoDoMes(
     dados({
       contas: [corrente, cartao, vale],
@@ -1504,8 +1752,8 @@ console.log('\n17b. A sobra do mes e a variacao do saldo em conta');
 {
   const cc = conta({ id: 'cc17', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 10, 1, 0) });
   const va = conta({ id: 'va17', tipo: 'vale', saldoInicial: 0, saldoInicialEm: T(2026, 10, 1, 0) });
-  const salario = renda({ data: T(2026, 6, 5, 8), valor: 350000, contaId: cc.id });
-  const beneficio = renda({ data: T(2026, 6, 1, 8), valor: 35000 });
+  const salario = renda({ data: T(2026, 10, 5, 8), valor: 350000, contaId: cc.id });
+  const beneficio = renda({ data: T(2026, 10, 1, 8), valor: 35000 });
   const compras = [
     compra({ data: T(2026, 10, 2), total: 23000, contaId: va.id }),
     compra({ data: T(2026, 10, 3), total: 14750, contaId: cc.id }),

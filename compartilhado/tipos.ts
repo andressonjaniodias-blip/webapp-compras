@@ -165,16 +165,17 @@ export function motivoParaNaoTransferir(
 }
 
 /**
- * Dinheiro que entra.
+ * Dinheiro que entrou, na data em que entrou.
  *
- * `periodicidade` e `encerradoEm` juntos resolvem o aumento de salario sem
- * reescrever o passado: mudar o valor encerra a renda antiga no fim do mes
- * anterior e cria uma nova a partir dali. Editar o valor no lugar faria janeiro
- * a junho passarem a valer o valor de julho, e todo resumo anterior ficaria
- * errado sem ninguem perceber.
+ * ENTRADA E LANCAMENTO, nao regra. Havia uma regra recorrente ("salario, todo dia
+ * 5") com aumento versionado por `encerradoEm`; foi abandonada, e o que vai
+ * entrar nos meses que vem a previsao estima pela media das entradas dos meses
+ * completos anteriores (`estimarEntradaMensal`).
  *
- * 'anual' existe por causa do 13o e das ferias: sem eles, uma projecao de doze
- * meses no Brasil esta errada por construcao.
+ * `periodicidade` e `encerradoEm` continuam no tipo, no banco e na sincronizacao
+ * so como LEGADO: um aparelho antigo ou um backup ainda podem trazer `mensal` ou
+ * `anual`, e `materializarRenda` os transforma em lancamentos. O app novo grava
+ * sempre `'unica'` e `null`, e ninguem mais le essas colunas para decidir nada.
  */
 export interface Renda extends Sincronizavel {
   data: number;
@@ -182,8 +183,9 @@ export interface Renda extends Sincronizavel {
   origem: string;
   /** Centavos. */
   valor: number;
+  /** LEGADO. O app novo grava sempre `'unica'`. Ver `materializarRenda`. */
   periodicidade: Periodicidade;
-  /** Fim da vigencia. `null` = ainda vale. */
+  /** LEGADO. O app novo grava sempre `null`. */
   encerradoEm: number | null;
   /** Onde o dinheiro cai. Recarga de vale aponta para o vale, nao para a conta. */
   contaId: string | null;
@@ -205,8 +207,9 @@ export interface Divida extends Sincronizavel {
   /**
    * Desconto automatico em folha (consignado).
    *
-   * Nunca atrasa: a parcela e considerada paga na data em que o salario cai, e
-   * por isso nao gera lembrete. Como a renda cadastrada e o BRUTO, sem o
+   * Nunca atrasa: a parcela e considerada paga no dia em que o salario cai (o dia
+   * da maior entrada recente, ver `diaDoSalario`), e por isso nao gera lembrete.
+   * Como a entrada lancada e o BRUTO, sem o
    * desconto do emprestimo, a parcela precisa sair da conta para o saldo bater
    * com o extrato — e e o `contaId` abaixo que diz de qual.
    */

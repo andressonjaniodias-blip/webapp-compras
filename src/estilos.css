@@ -269,35 +269,101 @@ input[type='checkbox']:focus-visible {
 }
 
 /*
- * As abas da tela inicial (Despesas | Receitas). Dois alvos de metade da
- * largura: no corredor do mercado o polegar acerta sem mirar.
+ * O painel da tela inicial: um destaque e uma grade de cartoes-resumo.
+ *
+ * A grade se adapta a largura sem media query (o projeto so tem uma, a dos
+ * rotulos do topo): duas colunas no celular, uma em tela muito estreita, tres
+ * no computador. Cada cartao e UM botao.
  */
-.abas {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  margin-top: 10px;
-  padding: 4px;
-  background: var(--superficie-alta);
-  border-radius: var(--raio);
+.painel-destaque {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.aba {
-  min-height: 40px;
-  border: 0;
-  border-radius: calc(var(--raio) - 4px);
-  background: transparent;
-  color: var(--texto-fraco);
+.painel-destaque .botao {
+  margin-top: 10px;
+}
+
+.painel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.painel-cartao {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 132px;
+  padding: 14px;
+  text-align: left;
+  background: var(--superficie);
+  border: 1px solid var(--cartao-borda);
+  border-radius: var(--raio-cartao);
+  box-shadow: var(--sombra);
+  color: inherit;
   font: inherit;
-  font-size: 0.95rem;
   cursor: pointer;
 }
 
-.aba-ativa {
-  background: var(--superficie);
+.painel-cartao:active {
+  background: var(--superficie-alta);
+}
+
+.painel-titulo {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--texto-fraco);
+}
+
+.painel-corpo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.painel-corpo .dica {
+  margin: 0;
+}
+
+.painel-numero {
+  font-family: var(--fonte-valor);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.painel-linha {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.painel-linha > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.painel-linha > span:last-child:not(:first-child) {
+  font-family: var(--fonte-valor);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.painel-ver {
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--acento-texto);
-  font-weight: 650;
-  box-shadow: var(--sombra);
 }
 
 /* --------------------------------------------------------------- blocos */

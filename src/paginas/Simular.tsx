@@ -27,6 +27,8 @@ import {
   mesesAteAMetaMaisLonga,
   simular,
   type Simulacao,
+  estimarEntradaMensal,
+  temBaseDeEntrada,
 } from '../../compartilhado/previsao';
 import { useFinanceiro } from '../dados/financeiro';
 import { formatarReais } from '../lib/dinheiro';
@@ -38,7 +40,7 @@ const HORIZONTE = 12;
 export function Simular() {
   const navegar = useNavigate();
   const { plano } = useApp();
-  const { dados, gastoManual, carregando, temRenda } = useFinanceiro();
+  const { dados, gastoManual, entradaManual, carregando } = useFinanceiro();
 
   const [valor, setValor] = useState(0);
   const [contaId, setContaId] = useState<string>('');
@@ -58,6 +60,7 @@ export function Simular() {
   const meses = Math.max(HORIZONTE, mesesAteAMetaMaisLonga(dados.metas, agora));
 
   const estimativa = estimarGastoCorrente(dados, agora, gastoManual);
+  const temBase = temBaseDeEntrada(estimarEntradaMensal(dados, agora, entradaManual));
   const contaEscolhida = dados.contas.find((c) => c.id === contaId);
   const noCredito = contaEscolhida?.tipo === 'credito';
 
@@ -66,7 +69,7 @@ export function Simular() {
       ? simular(
           dados,
           { valor, contaId: contaId || null, parcelas: noCredito ? parcelas : 1, data: agora, categoria },
-          { meses, agora, gastoManual },
+          { meses, agora, gastoManual, entradaManual },
         )
       : null;
 
@@ -81,11 +84,12 @@ export function Simular() {
         </div>
       </header>
 
-      {!temRenda && (
+      {!temBase && (
         <p className="aviso aviso-atencao">
-          Sem uma entrada cadastrada não há previsão para comparar.{' '}
-          <button type="button" className="link" onClick={() => navegar('/rendas')}>
-            Cadastrar entrada
+          Sem entradas lançadas nos últimos meses não há previsão para comparar. Lance o que
+          caiu, ou diga quanto costuma entrar por mês.{' '}
+          <button type="button" className="link" onClick={() => navegar('/carteira')}>
+            Informar na Carteira
           </button>
         </p>
       )}
