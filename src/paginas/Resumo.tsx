@@ -25,7 +25,12 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { listarCompras } from '../dados/compras';
 import { useFinanceiro } from '../dados/financeiro';
 import { mesesComMovimento, resumirMes, type FatiaResumo } from '../lib/resumo';
-import { resumoDoMes, type MesFinanceiro } from '../../compartilhado/carteira';
+import {
+  extratoDeDividas,
+  gastoComDividasNoMes,
+  resumoDoMes,
+  type MesFinanceiro,
+} from '../../compartilhado/carteira';
 import { estimarGastoCorrente } from '../../compartilhado/previsao';
 import { limitesDo } from '../../compartilhado/planos';
 import { formatarReais } from '../lib/dinheiro';
@@ -86,6 +91,13 @@ export function Resumo() {
 
   const caixa = financeiro.mostrar ? resumoDoMes(financeiro.dados, mes, agora) : null;
 
+  // O que os emprestimos e financiamentos ja custaram no mes (descontado ou pago),
+  // para o total de gastos. So apresentacao: "Comprei" e a sobra nao mudam.
+  const dividasDoMes =
+    !financeiro.modoSimples && financeiro.temDividas
+      ? gastoComDividasNoMes(extratoDeDividas(financeiro.dados, agora), mes)
+      : { total: 0, parcelas: 0 };
+
   function escolherMes(destino: string) {
     setMesEscolhido(destino);
     setDicas(null);
@@ -122,7 +134,9 @@ export function Resumo() {
         <RazaoDoCaixa caixa={caixa} ehCorrente={ehCorrente} temRenda={financeiro.temRenda} />
       )}
 
-      <h2 className="secao-titulo">O que eu comprei</h2>
+      <h2 className="secao-titulo">
+        {dividasDoMes.parcelas > 0 ? 'O que eu gastei' : 'O que eu comprei'}
+      </h2>
       <section className="cartao">
         <div className="razao-linha razao-total">
           <span />
@@ -142,6 +156,22 @@ export function Resumo() {
             {caixa.semConta > 0 && (
               <Linha filha rotulo="sem conta definida" valor={caixa.semConta} />
             )}
+          </>
+        )}
+
+        {dividasDoMes.parcelas > 0 && (
+          <>
+            <Linha
+              sinal="+"
+              rotulo="Empréstimos e financiamentos"
+              dica="(já descontados ou pagos)"
+              valor={dividasDoMes.total}
+            />
+            <div className="razao-linha razao-total">
+              <span />
+              <span>Gastei em {apenasMes(mes)}</span>
+              <span className="razao-valor">{formatarReais(resumo.total + dividasDoMes.total)}</span>
+            </div>
           </>
         )}
 
