@@ -155,6 +155,18 @@ Rode as três antes de dar qualquer mudança por concluída.
     e nenhum valor digitado (`temBaseDeEntrada`) — não se mostra número de
     previsão: zero por falta de dado diria "você vai ficar sem dinheiro" sem
     que seja verdade. A média inclui extras (13º, reembolso); a tela diz isso.
+23. **Parcela variável: o que foi pago define a parcela, e nada é guardado por
+    mês.** Com `Divida.parcelaVariavel` ligado (financiamento da casa),
+    `parcelasDaDivida(divida, pagamentos)` vale a soma paga na competência que
+    tem pagamento, a soma da **última competência paga** nas seguintes, e o
+    calculado de sempre nas anteriores sem pagamento — a história não se
+    reescreve. Desfazer o último pagamento devolve a referência ao anterior sem
+    conta nenhuma. Todo chamador que monta as parcelas de uma dívida tem de
+    passar os pagamentos (`compromissos`, `descontosEmFolhaDa`,
+    `comprometidoPorMes`, a tela da parcela, o Excel); sem o interruptor, nada
+    muda e pagar menos continua sendo pagamento parcial (invariante 16).
+    `valorTotal` é só o valor inicial nessas dívidas: progresso e "quanto falta"
+    saem de `falta.previsto` e `falta.restante`, não dele.
 
 ## Convenções
 

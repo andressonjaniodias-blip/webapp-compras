@@ -355,9 +355,10 @@ function comprometidoPorMes(dados: DadosFinanceiros, agora: number): Map<string,
     // A presuncao entra aqui tambem, e nao so na Carteira: sem ela, o
     // consignado ja retido no contracheque deste mes apareceria como
     // compromisso a pagar, e a sobra do mes sairia menor do que e.
+    const pagamentos = pagamentosDe(dados.transferencias, 'divida', divida.id);
     const ciclos = porCompetencia(
-      parcelasDaDivida(divida),
-      pagamentosDe(dados.transferencias, 'divida', divida.id),
+      parcelasDaDivida(divida, pagamentos),
+      pagamentos,
       presumidoAteDaDivida(divida, dados, agora),
     );
     for (const ciclo of ciclos) {

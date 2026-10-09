@@ -32,6 +32,7 @@ import { grupoDaCategoria } from '../../compartilhado/constantes';
 import {
   acharConta,
   compromissos,
+  pagamentosDe,
   resumoDoMes,
   todasAsFaturas,
   type DadosFinanceiros,
@@ -224,7 +225,9 @@ export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void>
   // fora do app: filtre por competencia e veja o peso de cada mes futuro.
   const parcelas = [
     ...tudo.compras.flatMap((c) => parcelasDaCompra(c, acharConta(tudo.contas, c.contaId))),
-    ...tudo.dividas.flatMap(parcelasDaDivida),
+    ...tudo.dividas.flatMap((d) =>
+      parcelasDaDivida(d, pagamentosDe(tudo.transferencias, 'divida', d.id)),
+    ),
   ].sort((a, b) => a.vencimentoEm - b.vencimentoEm);
 
   const abaParcelas: Celula[][] = [

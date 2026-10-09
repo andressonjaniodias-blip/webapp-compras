@@ -60,7 +60,7 @@ export function Parcela() {
   const agora = Date.now();
   const pagamentosDaDivida = pagamentosDe(dados.transferencias, 'divida', divida.id);
   const ciclo = porCompetencia(
-    parcelasDaDivida(divida),
+    parcelasDaDivida(divida, pagamentosDaDivida),
     pagamentosDaDivida,
     presumidoAteDaDivida(divida, dados, agora),
   ).find((c) => c.competencia === competencia);
@@ -136,6 +136,14 @@ export function Parcela() {
       </section>
 
       <h2 className="secao-titulo">Pagamento</h2>
+
+      {divida.parcelaVariavel && (
+        <p className="dica">
+          A parcela varia: o valor que você pagar vira a parcela de {nomeMes(competencia)} e das
+          próximas, até o próximo pagamento. O valor abaixo já vem com o último que você pagou.
+          Digitou errado? Desfaça o pagamento e registre de novo.
+        </p>
+      )}
 
       {contasDeOrigem.length === 0 ? (
         <p className="dica">

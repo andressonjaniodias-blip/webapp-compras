@@ -353,7 +353,7 @@ function descontosEmFolhaDa(
   }
 
   let total = 0;
-  for (const parcela of parcelasDaDivida(divida)) {
+  for (const parcela of parcelasDaDivida(divida, pagamentosDe(dados.transferencias, 'divida', divida.id))) {
     if (parcela.competencia > limite) continue;
     // Pagamento registrado ja sai pela transferencia. Presumir de novo aqui
     // tiraria o mesmo dinheiro duas vezes.
@@ -592,9 +592,10 @@ export function compromissos(dados: DadosFinanceiros, agora: number): Compromiss
 
   for (const divida of dados.dividas) {
     if (!naoExcluido(divida)) continue;
+    const pagamentos = pagamentosDe(dados.transferencias, 'divida', divida.id);
     const ciclos = porCompetencia(
-      parcelasDaDivida(divida),
-      pagamentosDe(dados.transferencias, 'divida', divida.id),
+      parcelasDaDivida(divida, pagamentos),
+      pagamentos,
       presumidoAteDaDivida(divida, dados, agora),
     );
     saida.push({

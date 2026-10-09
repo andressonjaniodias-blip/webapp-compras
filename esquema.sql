@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS dividas (
   parcelas      INTEGER NOT NULL DEFAULT 1,
   primeira_em   BIGINT  NOT NULL,
   desconto_em_folha BOOLEAN NOT NULL DEFAULT FALSE,
+  parcela_variavel BOOLEAN NOT NULL DEFAULT FALSE,
   conta_id      TEXT,
   observacao    TEXT    NOT NULL DEFAULT '',
   atualizado_em BIGINT  NOT NULL,
@@ -115,6 +116,7 @@ CREATE TABLE IF NOT EXISTS dividas (
 -- esquema que nao tem como consertar nada. Ja aconteceu duas vezes.
 ALTER TABLE dividas ADD COLUMN IF NOT EXISTS desconto_em_folha BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE dividas ADD COLUMN IF NOT EXISTS conta_id TEXT;
+ALTER TABLE dividas ADD COLUMN IF NOT EXISTS parcela_variavel BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS metas (
   id             TEXT PRIMARY KEY,

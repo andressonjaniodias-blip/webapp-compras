@@ -83,10 +83,16 @@ export function Dividas() {
           const conta = dados.contas.find((c) => c.id === divida.contaId);
           const falta = faltaPorId.get(divida.id);
           const pagas = divida.parcelas - (falta?.parcelasRestantes ?? divida.parcelas);
+          // `previsto` e a soma do que cada competencia vale — igual a `valorTotal`
+          // numa divida de parcela fixa, e o unico numero certo numa de parcela
+          // variavel, onde `valorTotal` e so o valor inicial.
           const progresso =
-            divida.valorTotal > 0 && falta
-              ? ((divida.valorTotal - falta.restante) / divida.valorTotal) * 100
+            falta && falta.previsto > 0
+              ? ((falta.previsto - falta.restante) / falta.previsto) * 100
               : 0;
+          const valorMensal = divida.parcelaVariavel
+            ? (parcelaDoMes.get(divida.id)?.valor ?? valorDaParcela(divida.valorTotal, divida.parcelas, 2))
+            : valorDaParcela(divida.valorTotal, divida.parcelas, 2);
 
           if (editando === divida.id) {
             return (
@@ -123,7 +129,7 @@ export function Dividas() {
                 </div>
                 <div className="compra-meta" style={{ marginTop: 6 }}>
                   {pagas} de {divida.parcelas} pagas ·{' '}
-                  {formatarReais(valorDaParcela(divida.valorTotal, divida.parcelas, 2))}/mês
+                  {formatarReais(valorMensal)}/mês{divida.parcelaVariavel && ' (varia)'}
                   {divida.descontoEmFolha
                     ? ' · desconto em folha'
                     : conta
@@ -207,7 +213,9 @@ function FormDivida({
       </div>
 
       <div className="campo">
-        <label className="campo-rotulo" htmlFor={'parc-' + divida.id}>Valor da parcela</label>
+        <label className="campo-rotulo" htmlFor={'parc-' + divida.id}>
+          {divida.parcelaVariavel ? 'Valor inicial da parcela' : 'Valor da parcela'}
+        </label>
         <CampoDinheiro
           id={'parc-' + divida.id}
           valor={parcela}
@@ -217,10 +225,25 @@ function FormDivida({
           }}
         />
         <p className="dica">
-          O valor que sai por mês, com os juros já dentro. O app não calcula juros — com a
-          parcela e o prazo ele já sabe quanto falta e até quando.
+          {divida.parcelaVariavel
+            ? 'Vale só até o primeiro pagamento: depois, o que você pagar vira a parcela daquele mês e das próximas. Mudar isto não mexe nos meses já pagos.'
+            : 'O valor que sai por mês, com os juros já dentro. O app não calcula juros — com a parcela e o prazo ele já sabe quanto falta e até quando.'}
         </p>
       </div>
+
+      <label className="interruptor">
+        <input
+          type="checkbox"
+          checked={divida.parcelaVariavel}
+          onChange={(e) => void mudar({ parcelaVariavel: e.target.checked })}
+        />
+        <span>A parcela varia de mês a mês</span>
+      </label>
+      <p className="dica">
+        Para financiamento imobiliário e outros que reajustam. Ao registrar um pagamento, o valor
+        pago passa a ser a parcela daquele mês, e as seguintes usam esse mesmo valor até o próximo
+        pagamento. Desligado, pagar menos que a parcela deixa o resto devendo.
+      </p>
 
       <div className="grade-item-4">
         <div>

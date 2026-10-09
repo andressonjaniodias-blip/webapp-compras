@@ -185,6 +185,7 @@ function divida(parcial: Partial<Divida> = {}): Divida {
     parcelas: parcial.parcelas ?? 24,
     primeiraEm: parcial.primeiraEm ?? T(2026, 1, 10),
     descontoEmFolha: parcial.descontoEmFolha ?? false,
+    parcelaVariavel: parcial.parcelaVariavel ?? false,
     contaId: parcial.contaId ?? null,
     observacao: '',
     atualizadoEm: 0,
@@ -309,6 +310,7 @@ console.log('\n3. Parcela n cai na competencia certa');
     parcelas: 36,
     primeiraEm: T(2026, 7, 10),
     descontoEmFolha: false,
+    parcelaVariavel: false,
     contaId: null,
     observacao: '',
     atualizadoEm: 0,
@@ -1903,6 +1905,82 @@ console.log('\n18b. Lista por mes: os meses com algo, e sempre o corrente');
     mesesDaLista(['2026-12'], agora).join(','),
     '2026-12,2026-10',
   );
+}
+
+// ================================ 19. parcela variavel: o que paguei vira o valor
+
+/*
+ * O financiamento da casa nao cobra o mesmo valor todo mes. Com o interruptor
+ * ligado, o que foi PAGO define a parcela daquele mes e vira a referencia das
+ * seguintes — sem reescrever os meses de antes, e sem guardar nada por mes.
+ */
+console.log('\n19. Parcela variavel: o que eu paguei vira o valor da parcela');
+{
+  const AGORA = T(2026, 10, 8);
+  const cc = conta({ id: 'cc', tipo: 'corrente', saldoInicial: 0, saldoInicialEm: T(2026, 1, 1) });
+  const casa = divida({
+    id: 'casa', descricao: 'Casa', tipo: 'financiamento', valorTotal: 36000000, parcelas: 360,
+    primeiraEm: T(2026, 7, 10), contaId: 'cc', parcelaVariavel: true,
+  });
+  const pagar = (competencia: string, valor: number, dia = 10, mes = Number(competencia.slice(5))) =>
+    transferencia({
+      origemContaId: 'cc', alvo: 'divida', alvoId: 'casa', competencia, valor,
+      data: T(2026, mes, dia),
+    });
+  const valorDe = (d: ReturnType<typeof divida>, pagamentos: ReturnType<typeof pagar>[], competencia: string) =>
+    parcelasDaDivida(d, pagamentos).find((p) => p.competencia === competencia)?.valor;
+
+  const pagamentos = [pagar('2026-08', 135000), pagar('2026-09', 137210)];
+
+  igual('o mes pago vale o que foi pago (agosto)', valorDe(casa, pagamentos, '2026-08'), 135000);
+  igual('o mes pago vale o que foi pago (setembro)', valorDe(casa, pagamentos, '2026-09'), 137210);
+  igual('outubro em diante vale o ultimo pago', valorDe(casa, pagamentos, '2026-10'), 137210);
+  igual('e vale por todo o resto do prazo', valorDe(casa, pagamentos, '2029-06'), 137210);
+  igual('antes do primeiro pagamento, o calculado de sempre', valorDe(casa, pagamentos, '2026-07'), 100000);
+
+  const ciclos = porCompetencia(parcelasDaDivida(casa, pagamentos), pagamentos, '2026-09');
+  const setembro = ciclos.find((c) => c.competencia === '2026-09')!;
+  igual('o mes pago fica quitado: nao e pagamento parcial', setembro.restante, 0);
+  igual('pagar menos que o calculado tambem quita o mes', ciclos.find((c) => c.competencia === '2026-08')!.restante, 0);
+
+  const base = dados({ contas: [cc], dividas: [casa], transferencias: pagamentos });
+  const comp = compromissos(base, AGORA).find((c) => c.id === 'casa')!;
+  igual('falta pagar: as parcelas restantes a referencia', comp.falta.restante, (360 - 3) * 137210);
+  igual(
+    'a previsao do mes seguinte usa a referencia',
+    projetar(base, { meses: 3, agora: AGORA }).find((l) => l.mes === '2026-11')?.comprometido,
+    137210,
+  );
+
+  // Desfazer o ultimo pagamento devolve a referencia ao anterior.
+  igual(
+    'sem o pagamento de setembro, a referencia volta a ser a de agosto',
+    valorDe(casa, [pagamentos[0]!], '2026-10'),
+    135000,
+  );
+
+  // Buraco entre pagamentos: o mes sem registro mantem o valor calculado.
+  const comBuraco = [pagar('2026-07', 120000, 10, 7), pagar('2026-09', 137210)];
+  igual('o buraco entre dois pagamentos mantem o calculado', valorDe(casa, comBuraco, '2026-08'), 100000);
+  igual('e o mes depois do ultimo usa a referencia', valorDe(casa, comBuraco, '2026-10'), 137210);
+
+  // Dois pagamentos na mesma competencia somam.
+  const dois = [pagar('2026-09', 100000, 5), pagar('2026-09', 37210, 15)];
+  igual('dois pagamentos na mesma competencia somam', valorDe(casa, dois, '2026-09'), 137210);
+  igual('e a referencia e a soma', valorDe(casa, dois, '2026-10'), 137210);
+
+  igual('sem nenhum pagamento, tudo como sempre', valorDe(casa, [], '2026-10'), 100000);
+
+  // SEM O INTERRUPTOR NADA MUDA: pagar diferente continua sendo pagamento parcial.
+  const comum = { ...casa, parcelaVariavel: false };
+  igual('sem o interruptor, o valor nao segue o pagamento', valorDe(comum, pagamentos, '2026-10'), 100000);
+  const ciclosComum = porCompetencia(parcelasDaDivida(comum, [pagar('2026-09', 4000)]), [pagar('2026-09', 4000)], '2026-08');
+  igual('e pagar menos continua deixando o resto devendo', ciclosComum.find((c) => c.competencia === '2026-09')!.restante, 96000);
+
+  // O extrato (a lista de compras) mostra o valor real da parcela.
+  const extrato = extratoDeDividas(base, AGORA);
+  igual('o extrato mostra o valor pago em setembro', extrato.find((p) => p.competencia === '2026-09')?.valor, 137210);
+  igual('e o de outubro, a referencia', extrato.find((p) => p.competencia === '2026-10')?.valor, 137210);
 }
 
 console.log('');if (falhas > 0) {

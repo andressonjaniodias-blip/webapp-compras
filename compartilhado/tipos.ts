@@ -215,6 +215,18 @@ export interface Divida extends Sincronizavel {
    */
   descontoEmFolha: boolean;
   /**
+   * A parcela varia de mes a mes (financiamento imobiliario: reajuste, seguro).
+   *
+   * Com ela ligada, o que voce PAGA define a parcela daquele mes e vira a
+   * referencia das seguintes (ver `parcelasDaDivida`). Nada e guardado por mes:
+   * os valores saem dos pagamentos, como a fatura sai das compras — guardar os
+   * dois abriria a porta para discordarem. Desligada, nada muda: pagar menos que
+   * a parcela e pagamento PARCIAL e o resto continua devendo.
+   *
+   * Registro gravado antes desta versao nao tem o campo: le como `false`.
+   */
+  parcelaVariavel: boolean;
+  /**
    * De qual conta a parcela sai. `null` = nao informado.
    *
    * `Compra`, `Renda` e `Transferencia` sempre disseram de que conta falam; so

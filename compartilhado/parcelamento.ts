@@ -102,8 +102,28 @@ export function competenciaDaCompra(compra: Compra, conta: Conta): string {
  *
  * Vencem no mesmo dia do mes da primeira. Dia 31 em fevereiro cai no ultimo dia,
  * pela mesma razao do ciclo do cartao.
+ *
+ * PARCELA VARIAVEL (`divida.parcelaVariavel`): um financiamento da casa nao cobra
+ * o mesmo valor todo mes, e `valorTotal / parcelas` so descreve a media. Entao,
+ * recebendo os `pagamentos` da divida, o que foi PAGO define o valor:
+ *
+ *   competencia com pagamento              -> a soma do que foi pago nela
+ *   depois da ultima competencia paga      -> a soma paga nessa ultima (a referencia)
+ *   antes dela e sem pagamento (buraco, ou
+ *   presumida)                             -> o valor calculado de sempre
+ *
+ * O ultimo caso e o que impede de reescrever a historia: quem muda a referencia
+ * hoje nao muda o que as competencias passadas valiam. Sem pagamento algum, ou
+ * sem o interruptor, e o calculo de sempre — `pagamentos` e opcional de proposito,
+ * para quem nao tem o que passar.
+ *
+ * Nada e guardado por mes: desfazer o ultimo pagamento devolve a referencia ao
+ * anterior sem nenhuma conta a mais.
  */
-export function parcelasDaDivida(divida: Divida): Parcela[] {
+export function parcelasDaDivida(
+  divida: Divida,
+  pagamentos: readonly Transferencia[] = [],
+): Parcela[] {
   const vezes = Math.max(1, Math.floor(divida.parcelas));
   const primeira = chaveDoMes(divida.primeiraEm);
   const dia = new Date(divida.primeiraEm).getDate();
@@ -125,7 +145,28 @@ export function parcelasDaDivida(divida: Divida): Parcela[] {
     });
   }
 
-  return saida;
+  if (!divida.parcelaVariavel) return saida;
+
+  const pagoPorCompetencia = new Map<string, number>();
+  for (const pagamento of pagamentos) {
+    pagoPorCompetencia.set(
+      pagamento.competencia,
+      (pagoPorCompetencia.get(pagamento.competencia) ?? 0) + pagamento.valor,
+    );
+  }
+  const pagas = [...pagoPorCompetencia.entries()]
+    .filter(([, valor]) => valor > 0)
+    .sort(([a], [b]) => a.localeCompare(b));
+  const ultima = pagas.at(-1);
+  if (!ultima) return saida;
+  const [ultimaCompetencia, referencia] = ultima;
+
+  return saida.map((parcela) => {
+    const pago = pagoPorCompetencia.get(parcela.competencia) ?? 0;
+    if (pago > 0) return { ...parcela, valor: pago };
+    if (parcela.competencia > ultimaCompetencia) return { ...parcela, valor: referencia };
+    return parcela;
+  });
 }
 
 /** Soma dos valores de uma lista de parcelas. */

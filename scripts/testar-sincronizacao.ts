@@ -119,6 +119,7 @@ function dividaExemplo(id: string, atualizadoEm: number): Divida {
     parcelas: 36,
     primeiraEm: Date.UTC(2026, 6, 10, 12, 0),
     descontoEmFolha: false,
+    parcelaVariavel: true,
     contaId: null,
     observacao: '',
     atualizadoEm,
@@ -276,6 +277,7 @@ async function principal(): Promise<void> {
   conferir('a periodicidade sobreviveu', novas.rendas[0]?.periodicidade === 'mensal');
   conferir('encerradoEm voltou como null', novas.rendas[0]?.encerradoEm === null);
   conferir('a divida voltou', novas.dividas[0]?.parcelas === 36);
+  conferir('a parcela variavel sobreviveu', novas.dividas[0]?.parcelaVariavel === true);
   conferir('a meta voltou', novas.metas[0]?.valorAlvo === 1500000);
   conferir('prazoEm voltou como null', novas.metas[0]?.prazoEm === null);
   conferir('a transferencia voltou', novas.transferencias[0]?.valor === 18520);
@@ -478,6 +480,7 @@ async function testarAutocuraDoEsquema(consultar: Awaited<ReturnType<typeof banc
   conferir(
     'e ganhou o padrao das colunas novas',
     resposta.dividas.find((d) => d.id === 'divida-antiga')?.descontoEmFolha === false &&
+      resposta.dividas.find((d) => d.id === 'divida-antiga')?.parcelaVariavel === false &&
       resposta.dividas.find((d) => d.id === 'divida-antiga')?.contaId === null,
   );
 
