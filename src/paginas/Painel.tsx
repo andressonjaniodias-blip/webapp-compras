@@ -37,6 +37,7 @@ import { criarCompra, listarCompras } from '../dados/compras';
 import type { EstadoFinanceiro } from '../dados/financeiro';
 import {
   extratoDeDividas,
+  gastoComDividasNoMes,
   parcelasQuitadasDaCompetencia,
   resumoDoMes,
   terminaEm,
@@ -76,15 +77,18 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
     navegar('/compra/' + id);
   }
 
-  // ---- Compras: o "Comprei no mes" do Resumo.
-  const totalDoMes = compras ? resumirMes(compras, mes).total : null;
+  // ---- Gastos: o "Comprei no mes" do Resumo mais o que os emprestimos ja
+  // custaram no mes (descontado ou pago), a mesma conta da lista.
+  const extrato = extratoDeDividas(dados, agora);
+  const comDividas = gastoComDividasNoMes(extrato, mes);
+  const totalDoMes = compras ? resumirMes(compras, mes).total + comDividas.total : null;
 
   // ---- Emprestimos: o bloco "Empréstimos" da Carteira, somado, e quantas
   // parcelas do mes ja foram descontadas ou pagas.
   const dividas = visao.carteira.compromissos.filter((c) => c.origem === 'divida');
   const restanteDasDividas = dividas.reduce((soma, c) => soma + c.falta.restante, 0);
   const ateQuando = terminaEm(dividas);
-  const parcelasDoMes = parcelasQuitadasDaCompetencia(extratoDeDividas(dados, agora), mes);
+  const parcelasDoMes = parcelasQuitadasDaCompetencia(extrato, mes);
 
   // ---- Metas: o total guardado e o total do alvo, de todas elas.
   const guardado = dados.metas.reduce((soma, m) => soma + m.guardado, 0);
@@ -116,11 +120,14 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
       />
 
       <div className="painel">
-        <Cartao titulo="Compras" onAbrir={() => navegar('/compras')}>
+        <Cartao titulo="Gastos" onAbrir={() => navegar('/compras')}>
           <span className="dica">em {soOMes(mes)}</span>
           <span className="painel-numero">
             {totalDoMes === null ? '' : formatarReais(totalDoMes)}
           </span>
+          {comDividas.parcelas > 0 && (
+            <span className="dica">com {formatarReais(comDividas.total)} de empréstimos</span>
+          )}
         </Cartao>
 
         <Cartao titulo="Receitas" onAbrir={() => navegar('/receitas')}>
