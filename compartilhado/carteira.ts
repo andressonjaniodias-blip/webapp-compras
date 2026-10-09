@@ -718,6 +718,36 @@ export function extratoDeDividas(dados: DadosFinanceiros, agora: number): Parcel
 }
 
 /**
+ * Quanto os emprestimos e financiamentos custaram num mes: so o que JA SAIU da
+ * conta — parcelas descontadas, pagas ou presumidas pagas, e o que foi pago de uma
+ * parcial. O que ainda vai vencer fica de fora: o total cresce ao longo do mes, e
+ * nao mistura o que foi gasto com o que vai ser.
+ *
+ * O mes e o da data em que a parcela saiu (`quando`), o mesmo da lista de compras,
+ * entao o total bate com as linhas que se veem naquele mes. E so APRESENTACAO: nao
+ * entra em "comprei" nem em sobra nenhuma — a parcela ja e contada como pagamento
+ * e como desconto em folha (invariantes 10, 17 e 19).
+ */
+export function gastoComDividasNoMes(
+  extrato: readonly ParcelaDeDivida[],
+  mes: string,
+): { total: number; parcelas: number } {
+  let total = 0;
+  let parcelas = 0;
+  for (const p of extrato) {
+    if (chaveDoMes(p.quando) !== mes) continue;
+    if (p.situacao === 'descontada' || p.situacao === 'paga' || p.situacao === 'presumida') {
+      total += p.valor;
+      parcelas += 1;
+    } else if (p.situacao === 'parcial' && p.pago > 0) {
+      total += p.pago;
+      parcelas += 1;
+    }
+  }
+  return { total, parcelas };
+}
+
+/**
  * Das parcelas de uma competencia, quantas ja estao quitadas (descontadas, pagas
  * ou presumidas). E a contagem do cartao Emprestimos do painel.
  */
