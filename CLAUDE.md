@@ -71,7 +71,10 @@ Rode as três antes de dar qualquer mudança por concluída.
     `teste:contas` existe para impedir. A parcela de empréstimo aparece na lista
     de compras (`extratoDeDividas`) só como linha informativa, com a situação dela
     (descontada, paga, em aberto…): nunca entra em total de compra, porque já é
-    contada como pagamento e como desconto em folha.
+    contada como pagamento e como desconto em folha. O total de **gastos** que a
+    lista, o cartão do painel e o Resumo mostram (`gastoComDividasNoMes`: compras
+    + o que os empréstimos já custaram no mês, só descontado ou pago) é
+    apresentação: "Comprei" (`resumirMes`) e a sobra não mudam.
 11. **A soma das parcelas é exatamente o total.** R$ 100,00 em 3x são
     33,34 + 33,33 + 33,33; a primeira absorve o resto. Nunca 99,99.
 12. **Entrada é lançamento, não regra.** Não existe mais renda recorrente nem
