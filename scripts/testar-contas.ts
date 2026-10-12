@@ -21,8 +21,10 @@ import {
   compromissos,
   dataDoDescontoEmFolha,
   diaDoSalario,
+  extratoDeCartoes,
   extratoDeDividas,
   faturasDoCartao,
+  faturasNoMes,
   materializarRenda,
   ocorrenciasDeRenda,
   gastoComDividasNoMes,
@@ -2279,6 +2281,83 @@ console.log('\n20b. O estado de cada ponto do saldo, e quais precos sao noticia'
   igual('o teto de itens vale', noticia.length, 3);
   igual('a ordem original (a mais forte primeiro) e mantida', noticia.map((h) => h.chave).join(','), 'a,b,e');
   igual('sem nada que mudou, lista vazia', mudancasDePreco([hist('c', 0.004)]).length, 0);
+}
+
+// ======================== 21. parcela de cartao na lista de gastos, mes da fatura
+
+/*
+ * A lista de gastos mostrava a compra em 12x so no mes em que foi feita, e quem
+ * conferia a fatura de outubro nao via ali a "parcela 3/12". O extrato de cartoes
+ * poe cada parcela no mes da FATURA — e, como o de emprestimos, e so leitura: sai
+ * de `faturasDoCartao`, a conta da tela da fatura, e nunca soma em gasto.
+ */
+console.log('\n21. Parcela de cartao na lista de gastos: o mes da fatura, sem contagem dupla');
+{
+  const cc = conta({ id: 'cc', tipo: 'corrente' });
+  const nu = conta({ id: 'nu', apelido: 'Nubank', tipo: 'credito', diaFechamento: 20, diaVencimento: 27 });
+  const agora = T(2026, 10, 12);
+
+  const notebook = compra({ id: 'nb', descricao: 'Notebook', total: 10000, parcelas: 3, contaId: 'nu', data: T(2026, 8, 10) });
+  const aVistaDeOutubro = compra({ id: 'av', descricao: 'Farmácia', total: 5000, contaId: 'nu', data: T(2026, 10, 5) });
+  // Depois do fechamento do dia 20: cai na fatura que vence em outubro.
+  const aVistaDeSetembro = compra({ id: 'av2', descricao: 'Livro', total: 7000, contaId: 'nu', data: T(2026, 9, 25) });
+  const pix = compra({ id: 'px', descricao: 'Padaria', total: 900, contaId: 'cc', data: T(2026, 10, 6) });
+  const apagada = compra({ id: 'ap', descricao: 'Lançada duas vezes', total: 4000, contaId: 'nu', data: T(2026, 10, 7), excluidoEm: 1 });
+  const longa = compra({ id: 'lg', descricao: 'Geladeira', total: 120000, parcelas: 12, contaId: 'nu', data: T(2026, 10, 12) });
+
+  const base = dados({
+    contas: [cc, nu],
+    compras: [notebook, aVistaDeOutubro, aVistaDeSetembro, pix, apagada, longa],
+  });
+  const extrato = extratoDeCartoes(base, agora);
+  const doNotebook = extrato.filter((p) => p.compraId === 'nb').sort((a, b) => a.indice - b.indice);
+
+  igual('compra em 3x: uma linha por parcela', doNotebook.length, 3);
+  igual('e a soma das linhas e exatamente o total', doNotebook.reduce((s, p) => s + p.valor, 0), 10000);
+  igual('a primeira absorve o centavo', doNotebook[0]!.valor, 3334);
+  igual('cada uma na competencia certa', doNotebook.map((p) => p.competencia).join(','), '2026-08,2026-09,2026-10');
+  igual('a linha sabe de quantas e', `${doNotebook[2]!.indice}/${doNotebook[2]!.de}`, '3/3');
+  igual('e quando a compra foi feita', doNotebook[0]!.compraEm, T(2026, 8, 10));
+  igual('e de qual cartao', doNotebook[0]!.apelido, 'Nubank');
+
+  igual(
+    'compra a vista feita depois do fechamento cai na fatura seguinte',
+    extrato.find((p) => p.compraId === 'av2')?.competencia,
+    '2026-10',
+  );
+  conferir('compra no Pix nao gera linha', !extrato.some((p) => p.compraId === 'px'));
+  conferir('compra excluida nao gera linha', !extrato.some((p) => p.compraId === 'ap'));
+
+  const geladeira = extrato.filter((p) => p.compraId === 'lg');
+  igual('compra em 12x: so a fatura aberta, nenhuma parcela futura', geladeira.length, 1);
+  conferir('nao ha linha alem da fatura aberta', extrato.every((p) => p.competencia <= '2026-10'));
+
+  const outubro = faturasNoMes(extrato, '2026-10');
+  igual('um cartao com parcela em outubro', outubro.length, 1);
+  igual(
+    'o total de outubro: parcela 3/3 + a vista + livro + 1/12 da geladeira',
+    outubro[0]!.total,
+    3333 + 5000 + 7000 + 10000,
+  );
+  igual(
+    'e e o mesmo numero da tela da fatura',
+    outubro[0]!.total,
+    faturasDoCartao(nu, base, agora).find((f) => f.competencia === '2026-10')!.total,
+  );
+  igual('agosto fecha com a parcela 1/3', faturasNoMes(extrato, '2026-08')[0]!.total, 3334);
+  igual('mes sem fatura nao tem total', faturasNoMes(extrato, '2026-05').length, 0);
+
+  // O que a lista mostra nao muda o que o app diz que voce gastou.
+  const antes = calcularCarteira(base, agora);
+  extratoDeCartoes(base, agora);
+  const depois = calcularCarteira(base, agora);
+  igual('ler o extrato nao mexe no que falta pagar', depois.aPagar, antes.aPagar);
+  igual('nem no saldo em conta', depois.saldoEmConta, antes.saldoEmConta);
+
+  const semCartao = dados({ contas: [cc], compras: [pix] });
+  igual('sem cartao, nenhuma linha (Principio 0)', extratoDeCartoes(semCartao, agora).length, 0);
+  const cartaoApagado = dados({ contas: [{ ...nu, excluidoEm: 1 }], compras: [notebook] });
+  igual('cartao excluido nao gera linha', extratoDeCartoes(cartaoApagado, agora).length, 0);
 }
 
 console.log('');if (falhas > 0) {

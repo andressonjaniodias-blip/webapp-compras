@@ -71,7 +71,11 @@ Rode as três antes de dar qualquer mudança por concluída.
     `teste:contas` existe para impedir. A parcela de empréstimo aparece na lista
     de compras (`extratoDeDividas`) só como linha informativa, com a situação dela
     (descontada, paga, em aberto…): nunca entra em total de compra, porque já é
-    contada como pagamento e como desconto em folha. O total de **gastos** que a
+    contada como pagamento e como desconto em folha. **A parcela de cartão
+    também aparece na lista** (`extratoDeCartoes`, linha com o selo "fatura"),
+    no mês da *fatura* e não no da compra, e é igualmente só informativa: o gasto
+    já foi contado na compra. A linha "na fatura de …" sob o total
+    (`faturasNoMes`) tem de bater com a tela da fatura. O total de **gastos** que a
     lista, o cartão do painel e o Resumo mostram (`gastoComDividasNoMes`: compras
     + o que os empréstimos já custaram no mês, só descontado ou pago) é
     apresentação: "Comprei" (`resumirMes`) e a sobra não mudam.
@@ -177,6 +181,13 @@ Rode as três antes de dar qualquer mudança por concluída.
   mês por vez, com `NavegadorDeMes` (o do Resumo) e `useMesDaUrl`; abrir um item e
   voltar devolve ao mesmo mês. O "‹" das telas de detalhe usa `useVoltar`, nunca
   um destino fixo: destino fixo levava ao painel em vez da lista de onde se veio.
+
+- **Item abre em janela centralizada.** Inserir e editar item usam
+  `JanelaCentral` (`<dialog>` nativo com `showModal()`), que abre no meio da tela
+  onde quer que a lista esteja rolada; o botão "Adicionar item" fica no rodapé
+  fixo e a janela de inserir segue aberta depois de "Adicionar". A compra em si
+  continua sendo tela cheia. O foco inicial fica na janela, não no nome, para a
+  lista de sugestões não abrir por cima dos campos.
 
 - **Data e mês são montados à mão, nunca por `Intl.DateTimeFormat`.** A
   locale pedida só vale se o runtime tiver os dados dela; faltando, ele cai

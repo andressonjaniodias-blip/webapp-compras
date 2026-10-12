@@ -21,6 +21,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { CampoNumero } from '../componentes/CampoNumero';
 import { FormItem, type ValoresFormItem } from '../componentes/FormItem';
+import { JanelaCentral } from '../componentes/JanelaCentral';
 import { LinhaItem } from '../componentes/LinhaItem';
 import { SeletorChips } from '../componentes/SeletorChips';
 import {
@@ -80,6 +81,8 @@ export function EditarCompra() {
   );
 
   const [emEdicao, setEmEdicao] = useState<string | null>(null);
+  // Inserir e editar item abrem numa janela no centro da tela, e uma so por vez.
+  const [inserindo, setInserindo] = useState(false);
   const [motivoDoPalpite, setMotivoDoPalpite] = useState<string | null>(null);
 
   /**
@@ -144,6 +147,7 @@ export function EditarCompra() {
   if (compra === null) return saindo.current ? null : <Navigate to="/" replace />;
 
   const temItens = itens.length > 0;
+  const itemEmEdicao = itens.find((item) => item.id === emEdicao);
   const vezes = compra.parcelas ?? 1;
 
   const tiposAceitos = CONTAS_POR_FORMA[compra.formaPagamento] ?? [];
@@ -346,39 +350,58 @@ export function EditarCompra() {
       )}
 
       <ul className="lista">
-        {itens.map((item) =>
-          emEdicao === item.id ? (
-            <li key={item.id}>
-              <FormItem
-                itemInicial={item}
-                categoria={compra.categoria}
-                onCancelar={() => setEmEdicao(null)}
-                onSalvar={async (valores) => {
-                  await atualizarItem(item.id, valores);
-                  await atualizarPendentes();
-                  setEmEdicao(null);
-                }}
-              />
-            </li>
-          ) : (
-            <LinhaItem
-              key={item.id}
-              item={item}
-              onEditar={() => setEmEdicao(item.id)}
-              onRemover={async () => {
-                await removerItem(item.id);
-                await atualizarPendentes();
-              }}
-            />
-          ),
-        )}
+        {itens.map((item) => (
+          <LinhaItem
+            key={item.id}
+            item={item}
+            onEditar={() => setEmEdicao(item.id)}
+            onRemover={async () => {
+              await removerItem(item.id);
+              await atualizarPendentes();
+            }}
+          />
+        ))}
       </ul>
 
-      {emEdicao === null && <FormItem onSalvar={salvarNovoItem} categoria={compra.categoria} />}
+      {/*
+        As duas janelas. A de inserir fica aberta depois de "Adicionar": o
+        formulario ja limpa e devolve o foco ao nome, para lançar o carrinho
+        inteiro sem reabrir a cada item. "Fechar" encerra.
+      */}
+      <JanelaCentral aberta={inserindo} onFechar={() => setInserindo(false)} titulo="Novo item">
+        <FormItem
+          onSalvar={salvarNovoItem}
+          categoria={compra.categoria}
+          onCancelar={() => setInserindo(false)}
+          rotuloCancelar="Fechar"
+        />
+      </JanelaCentral>
+
+      <JanelaCentral
+        aberta={itemEmEdicao !== undefined}
+        onFechar={() => setEmEdicao(null)}
+        titulo="Editar item"
+      >
+        {itemEmEdicao && (
+          <FormItem
+            itemInicial={itemEmEdicao}
+            categoria={compra.categoria}
+            onCancelar={() => setEmEdicao(null)}
+            onSalvar={async (valores) => {
+              await atualizarItem(itemEmEdicao.id, valores);
+              await atualizarPendentes();
+              setEmEdicao(null);
+            }}
+          />
+        )}
+      </JanelaCentral>
 
       <div className="rodape">
-        <button type="button" className="botao botao-primario" onClick={voltar}>
+        <button type="button" className="botao" onClick={voltar}>
           Concluir
+        </button>
+        <button type="button" className="botao botao-primario" onClick={() => setInserindo(true)}>
+          Adicionar item
         </button>
       </div>
     </div>

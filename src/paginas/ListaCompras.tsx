@@ -20,6 +20,13 @@
  * (invariantes 10, 17 e 19). So aparecem fora do modo simples e havendo
  * emprestimo cadastrado.
  *
+ * AS PARCELAS DO CARTAO TAMBEM, no mes da FATURA (a competencia, nao o da compra),
+ * com o selo "fatura". Uma compra em 12x aparecia so no mes em que foi feita, e
+ * quem conferia a fatura de outubro nao via ali a "parcela 3/12" — e a lançava de
+ * novo. Sao informativas pela mesma razao: o gasto ja foi contado na compra
+ * (invariante 10). A linha "na fatura de ..." sob o total traz o valor de cada
+ * cartao, o numero que tem de bater com a tela da fatura.
+ *
  * Criar uma compra leva direto para a tela de edicao. Nao ha etapa de
  * confirmacao nem status de "aberta": no mercado, o caminho entre pegar o
  * celular e digitar o primeiro item precisa ter o menor numero possivel de
@@ -44,8 +51,11 @@ import { criarCompra, listarCompras } from '../dados/compras';
 import type { CompraLocal } from '../dados/banco';
 import { useFinanceiro } from '../dados/financeiro';
 import {
+  extratoDeCartoes,
   extratoDeDividas,
+  faturasNoMes,
   gastoComDividasNoMes,
+  type ParcelaDeCartao,
   type ParcelaDeDivida,
 } from '../../compartilhado/carteira';
 import { formatarReais } from '../lib/dinheiro';
@@ -70,11 +80,15 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
     !financeiro.modoSimples && financeiro.temDividas
       ? extratoDeDividas(financeiro.dados, agora)
       : [];
+  const faturas: ParcelaDeCartao[] = !financeiro.modoSimples
+    ? extratoDeCartoes(financeiro.dados, agora)
+    : [];
 
   const meses = mesesDaLista(
     [
       ...(compras ?? []).map((c) => chaveMes(c.data)),
       ...extrato.map((p) => chaveMes(p.quando)),
+      ...faturas.map((p) => p.competencia),
     ],
     agora,
   );
@@ -90,10 +104,12 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
 
   const comprasDoMes = (compras ?? []).filter((c) => chaveMes(c.data) === mes);
   const parcelasDoMes = extrato.filter((p) => chaveMes(p.quando) === mes);
+  const faturasDoMes = faturas.filter((p) => p.competencia === mes);
+  const totaisDasFaturas = faturasNoMes(faturas, mes);
 
-  // Com emprestimo na lista, ela deixa de ser so de COMPRAS: e de gastos. Vale o
-  // mesmo na tela aberta pelo painel, que ja se chama Gastos.
-  const gastos = !inicio || extrato.length > 0;
+  // Com emprestimo ou cartao na lista, ela deixa de ser so de COMPRAS: e de
+  // gastos. Vale o mesmo na tela aberta pelo painel, que ja se chama Gastos.
+  const gastos = !inicio || extrato.length > 0 || faturas.length > 0;
   const mesPorExtenso = nomeMes(mes).split(' ')[0];
   const compradoNoMes = compras ? resumirMes(compras, mes).total : 0;
   const comDividas = gastoComDividasNoMes(extrato, mes);
@@ -167,8 +183,15 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
               {formatarReais(comDividas.total)}
             </p>
           )}
+          {totaisDasFaturas.length > 0 && (
+            <p className="dica mes-total-detalhe">
+              na fatura de {mesPorExtenso}:{' '}
+              {totaisDasFaturas.map((f) => `${f.apelido} ${formatarReais(f.total)}`).join(' · ')}{' '}
+              (já contado nas compras)
+            </p>
+          )}
 
-          {comprasDoMes.length === 0 && parcelasDoMes.length === 0 && (
+          {comprasDoMes.length === 0 && parcelasDoMes.length === 0 && faturasDoMes.length === 0 && (
             <p className="vazio">
               Nenhum gasto em {mesPorExtenso}.
               <br />
@@ -177,7 +200,7 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
           )}
 
           <ul className="lista">
-            {linhas(comprasDoMes, parcelasDoMes, apelidos, navegar)}
+            {linhas(comprasDoMes, parcelasDoMes, faturasDoMes, apelidos, navegar)}
           </ul>
         </>
       )}
@@ -192,16 +215,19 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
 }
 
 /**
- * As compras e as parcelas de emprestimo do mes, juntas, da mais recente para a
- * mais antiga.
+ * As compras, as parcelas de emprestimo e as linhas de fatura do mes, juntas, da
+ * mais recente para a mais antiga.
  */
 function linhas(
   compras: readonly CompraLocal[],
   parcelas: readonly ParcelaDeDivida[],
+  faturas: readonly ParcelaDeCartao[],
   apelidos: ReadonlyMap<string, string>,
   navegar: (destino: string) => void,
 ) {
-  const itens: { quando: number; no: React.ReactNode }[] = [];
+  // `desempate` ordena as linhas de uma mesma fatura, que vencem todas no mesmo
+  // dia: a compra mais nova primeiro.
+  const itens: { quando: number; desempate: number; no: React.ReactNode }[] = [];
 
   for (const compra of compras) {
     const conta = compra.contaId ? apelidos.get(compra.contaId) : undefined;
@@ -209,6 +235,7 @@ function linhas(
 
     itens.push({
       quando: compra.data,
+      desempate: 0,
       no: (
         <li key={compra.id}>
           <button type="button" className="compra" onClick={() => navegar('/compra/' + compra.id)}>
@@ -235,6 +262,7 @@ function linhas(
   for (const parcela of parcelas) {
     itens.push({
       quando: parcela.quando,
+      desempate: 0,
       no: (
         <li key={'divida-' + parcela.dividaId + parcela.competencia}>
           <button
@@ -258,5 +286,35 @@ function linhas(
     });
   }
 
-  return itens.sort((a, b) => b.quando - a.quando).map((item) => item.no);
+  for (const parcela of faturas) {
+    itens.push({
+      quando: parcela.vencimentoEm,
+      desempate: parcela.compraEm,
+      no: (
+        <li key={'fatura-' + parcela.compraId + parcela.competencia}>
+          <button
+            type="button"
+            className="compra"
+            onClick={() => navegar('/compra/' + parcela.compraId)}
+          >
+            <div className="compra-corpo">
+              <div className="compra-titulo">
+                {parcela.descricao}
+                <span className="selo selo-fatura">fatura</span>
+              </div>
+              <div className="compra-meta">
+                {parcela.de > 1 ? `parcela ${parcela.indice}/${parcela.de}` : 'à vista'} ·{' '}
+                {parcela.apelido} · compra de {formatarData(parcela.compraEm)}
+              </div>
+            </div>
+            <span className="compra-valor">{formatarReais(parcela.valor)}</span>
+          </button>
+        </li>
+      ),
+    });
+  }
+
+  return itens
+    .sort((a, b) => b.quando - a.quando || b.desempate - a.desempate)
+    .map((item) => item.no);
 }

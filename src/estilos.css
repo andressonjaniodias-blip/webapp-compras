@@ -1199,6 +1199,60 @@ textarea.entrada {
   color: var(--acento-texto);
 }
 
+/* A linha de fatura de cartao na lista de gastos: informativa, nao e compra. */
+.selo-fatura {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+/*
+ * A janela centralizada: o formulario de item abre no meio da tela, onde quer que
+ * a lista esteja rolada. `<dialog>` modal ja centraliza (margin: auto), prende o
+ * foco e fecha no Esc. Altura em `dvh` para o teclado do celular nao empurrar o
+ * formulario para fora. Sem blur nem raio: e o visual brutalista.
+ */
+.janela {
+  width: min(92vw, 520px);
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: var(--bw) solid var(--borda);
+  border-radius: 0;
+  background: var(--superficie);
+  color: var(--texto);
+  box-shadow: var(--sombra-flutuante);
+}
+
+.janela:focus { outline: none; }
+
+.janela::backdrop { background: rgb(0 0 0 / 0.55); }
+
+.janela-corpo { padding: 14px 16px 16px; }
+
+.janela-titulo {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+/* O formulario ja e a janela: sem a caixa dentro da caixa. */
+.janela .form-item {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* A lista de sugestoes cabe dentro da janela, sem rolagem dupla com ela. */
+.janela .campo-com-sugestoes .sugestoes { max-height: 180px; }
+
+/* Com a janela aberta, a pagina por tras nao rola. */
+body:has(dialog.janela[open]) { overflow: hidden; }
+
 /* A fatia clicavel, que abre as compras que formam o numero. */
 .fatia-abrir {
   display: block;

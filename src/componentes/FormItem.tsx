@@ -53,11 +53,19 @@ interface Props {
   /** Preenchido quando o formulario esta editando um item ja lançado. */
   itemInicial?: ItemLocal;
   onCancelar?: () => void;
+  /** O texto do botao que sai sem salvar. Padrao: "Cancelar". */
+  rotuloCancelar?: string;
   /** Categoria da compra: itens dela vem na frente das sugestoes. */
   categoria?: string;
 }
 
-export function FormItem({ onSalvar, itemInicial, onCancelar, categoria }: Props) {
+export function FormItem({
+  onSalvar,
+  itemInicial,
+  onCancelar,
+  rotuloCancelar = 'Cancelar',
+  categoria,
+}: Props) {
   const editando = itemInicial !== undefined;
 
   const [nome, setNome] = useState(itemInicial?.nome ?? '');
@@ -270,7 +278,7 @@ export function FormItem({ onSalvar, itemInicial, onCancelar, categoria }: Props
 
         {onCancelar && (
           <button type="button" className="botao" onClick={onCancelar}>
-            Cancelar
+            {rotuloCancelar}
           </button>
         )}
         <button type="submit" className="botao botao-primario" disabled={!podeSalvar}>

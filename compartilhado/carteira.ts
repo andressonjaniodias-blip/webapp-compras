@@ -45,6 +45,7 @@
 import { grupoDaCategoria, type GrupoCategoria } from './constantes';
 import {
   chaveDoMes,
+  competenciaDe,
   diaDoMesSeguro,
   fechamentoDe,
   intervaloDoMes,
@@ -745,6 +746,93 @@ export function gastoComDividasNoMes(
     }
   }
   return { total, parcelas };
+}
+
+/** Uma linha da fatura de um cartao, para a lista de gastos. */
+export interface ParcelaDeCartao {
+  contaId: string;
+  /** Apelido do cartao. */
+  apelido: string;
+  /** A compra que gerou a parcela, para abrir o detalhe. */
+  compraId: string;
+  descricao: string;
+  /** A fatura em que a parcela cai ("2026-10"): o mes em que ela vence. */
+  competencia: string;
+  indice: number;
+  de: number;
+  /** Centavos da parcela. */
+  valor: number;
+  vencimentoEm: number;
+  /** Quando a compra foi feita. */
+  compraEm: number;
+  situacao: SituacaoFatura;
+}
+
+/**
+ * Uma linha por parcela de cartao, ate a fatura aberta de cada cartao.
+ *
+ * Existe para a lista de gastos mostrar o que a fatura cobra: uma compra em 12x
+ * aparece ali so no mes da compra, e conferir a fatura de outubro sem ver a
+ * "parcela 3/12" convida a lançar a compra de novo. E so LEITURA e sai de
+ * `faturasDoCartao`, a mesma conta da tela da fatura, para nunca divergir dela.
+ * Nunca soma em gasto: a compra ja foi contada quando foi lançada (invariante 10).
+ *
+ * Vai ate a fatura aberta (`competenciaDe(conta, agora)`) e nao alem: a lista e do
+ * que ja existe, e a Carteira projeta o que vem.
+ */
+export function extratoDeCartoes(dados: DadosFinanceiros, agora: number): ParcelaDeCartao[] {
+  const dataDaCompra = new Map(dados.compras.map((compra) => [compra.id, compra.data]));
+  const saida: ParcelaDeCartao[] = [];
+
+  for (const conta of dados.contas) {
+    if (!naoExcluido(conta) || conta.tipo !== 'credito') continue;
+    const aberta = competenciaDe(conta, agora);
+
+    for (const fatura of faturasDoCartao(conta, dados, agora)) {
+      if (fatura.competencia > aberta) continue;
+      for (const parcela of fatura.parcelas) {
+        saida.push({
+          contaId: conta.id,
+          apelido: conta.apelido,
+          compraId: parcela.fonteId,
+          descricao: parcela.descricao,
+          competencia: fatura.competencia,
+          indice: parcela.indice,
+          de: parcela.de,
+          valor: parcela.valor,
+          vencimentoEm: fatura.vencimentoEm,
+          compraEm: dataDaCompra.get(parcela.fonteId) ?? 0,
+          situacao: fatura.situacao,
+        });
+      }
+    }
+  }
+
+  return saida;
+}
+
+/**
+ * O total de cada cartao numa fatura: o numero que tem de bater com o da tela da
+ * fatura. Cartao sem parcela naquela competencia nao aparece.
+ */
+export function faturasNoMes(
+  extrato: readonly ParcelaDeCartao[],
+  competencia: string,
+): { contaId: string; apelido: string; total: number; parcelas: number }[] {
+  const porCartao = new Map<string, { contaId: string; apelido: string; total: number; parcelas: number }>();
+  for (const parcela of extrato) {
+    if (parcela.competencia !== competencia) continue;
+    const atual = porCartao.get(parcela.contaId) ?? {
+      contaId: parcela.contaId,
+      apelido: parcela.apelido,
+      total: 0,
+      parcelas: 0,
+    };
+    atual.total += parcela.valor;
+    atual.parcelas += 1;
+    porCartao.set(parcela.contaId, atual);
+  }
+  return [...porCartao.values()];
 }
 
 /**
