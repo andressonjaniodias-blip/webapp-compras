@@ -23,6 +23,14 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # O fuso de quem usa: o Render roda em UTC, e mes e dia da analise e do
+      # orcamento sao decididos pelo fuso do processo. O servidor ja assume este
+      # valor se a variavel faltar, mas declarar aqui deixa a escolha a vista.
+      - key: TZ
+        value: America/Sao_Paulo
+      # Opcional: quantas analises de IA por dia (padrao 30).
+      - key: LIMITE_IA_DIA
+        sync: false
       # String de conexao do Neon (nao do Render).
       - key: DATABASE_URL
         sync: false

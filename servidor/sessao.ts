@@ -18,7 +18,8 @@
  * publicar um app aberto por esquecimento.
  */
 
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { ehBancoLocal } from './banco';
@@ -48,6 +49,23 @@ export function conferirConfiguracao(): void {
       'SESSAO_SEGREDO nao esta definida. Use qualquer string longa e aleatoria.',
     );
   }
+  // So avisa, e nao derruba a subida: um segredo curto que ja esta em producao
+  // trancaria o app para fora na proxima publicacao. Quem le o log sabe o que fazer.
+  if ((process.env.SESSAO_SEGREDO ?? '').trim().length < 32) {
+    console.warn(
+      'SESSAO_SEGREDO tem menos de 32 caracteres: quem a adivinhar forja uma sessao. Gere outra com "npm run segredo".',
+    );
+  }
+}
+
+/** Para teste: assina e confere um cracha sem passar pelo Hono. */
+export function crachaDeTeste(expiraEm: number): string {
+  const carga = String(expiraEm);
+  return `${carga}.${assinar(carga)}`;
+}
+
+export function crachaEhValido(valor: string | undefined): boolean {
+  return crachaValido(valor);
 }
 
 /** Gera o valor de SENHA_HASH a partir de uma senha em texto. */
@@ -57,14 +75,30 @@ export function gerarHash(senha: string): string {
   return `scrypt$${sal.toString('hex')}$${derivada.toString('hex')}`;
 }
 
-export function conferirSenha(senha: string, guardado: string): boolean {
+/** Menos que isto no hash derivado so pode ser configuracao quebrada, e nunca valida uma senha. */
+const TAMANHO_MINIMO_DO_HASH = 32;
+
+const derivar = promisify(scrypt) as (
+  senha: string,
+  sal: Buffer,
+  tamanho: number,
+) => Promise<Buffer>;
+
+/**
+ * Assincrona de proposito: `scryptSync` trava o servidor inteiro enquanto
+ * calcula, e com varias tentativas em paralelo o app para de responder a quem
+ * esta usando. O hash malformado (`scrypt$$`, vazio) e recusado na hora: com
+ * zero bytes, a comparacao de dois buffers vazios daria `true`.
+ */
+export async function conferirSenha(senha: string, guardado: string): Promise<boolean> {
   const partes = guardado.split('$');
   if (partes.length !== 3 || partes[0] !== 'scrypt') return false;
 
   const sal = Buffer.from(partes[1]!, 'hex');
   const esperado = Buffer.from(partes[2]!, 'hex');
-  const derivada = scryptSync(senha.normalize('NFKC'), sal, esperado.length);
+  if (sal.length === 0 || esperado.length < TAMANHO_MINIMO_DO_HASH) return false;
 
+  const derivada = await derivar(senha.normalize('NFKC'), sal, esperado.length);
   return derivada.length === esperado.length && timingSafeEqual(derivada, esperado);
 }
 

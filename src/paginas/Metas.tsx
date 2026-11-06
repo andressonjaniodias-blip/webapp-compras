@@ -16,6 +16,8 @@
  * qual a fatura e derivada em vez de gravada.
  */
 
+import { useConfirmar } from '../componentes/Confirmar';
+import { Carregando } from '../componentes/Carregando';
 import { useState } from 'react';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { BarraDeProgresso } from '../componentes/graficos/BarraDeProgresso';
@@ -54,7 +56,7 @@ export function Metas() {
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
@@ -64,7 +66,7 @@ export function Metas() {
         </div>
       </header>
 
-      {carregando && <p className="carregando">Carregando…</p>}
+      {carregando && <Carregando />}
 
       {!carregando && dados.metas.length === 0 && (
         <p className="vazio">
@@ -168,6 +170,8 @@ function FormMeta({
   sobraMensal: number;
   onFechar: () => Promise<void>;
 }) {
+  const confirmar = useConfirmar();
+
   async function mudar(mudancas: Partial<Omit<Meta, 'id'>>) {
     await atualizarMeta(meta.id, mudancas);
   }
@@ -249,7 +253,12 @@ function FormMeta({
           type="button"
           className="botao botao-perigo"
           onClick={async () => {
-            if (window.confirm('Excluir esta meta?')) {
+            const certeza = await confirmar({
+              texto: 'Excluir esta meta?',
+              rotulo: 'Excluir',
+              perigo: true,
+            });
+            if (certeza) {
               await excluirMeta(meta.id);
               await onFechar();
             }

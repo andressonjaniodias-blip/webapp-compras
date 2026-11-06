@@ -509,6 +509,46 @@ WHERE ${tabela.nome}.atualizado_em <= EXCLUDED.atualizado_em
 `;
 }
 
+/** Quantos ids recusados a resposta lista. Basta: o resto sai na rodada seguinte. */
+const MAXIMO_DE_DESCARTADOS_NA_RESPOSTA = 50;
+
+/** Quanto o relogio de um aparelho pode estar adiantado sem ser considerado erro. */
+const MARGEM_DO_RELOGIO_MS = 5 * 60 * 1000;
+
+/** Campos que o banco exige (NOT NULL sem padrao), por tabela. Sem eles o lote INTEIRO falha. */
+const OBRIGATORIOS: Record<string, readonly (readonly [campo: string, tipo: 'numero' | 'texto'])[]> = {
+  compras: [['data', 'numero']],
+  itens: [['compraId', 'texto']],
+  rendas: [['data', 'numero']],
+  dividas: [['primeiraEm', 'numero']],
+  transferencias: [['data', 'numero']],
+};
+
+/**
+ * Este registro cabe no banco? Um registro ruim (campo obrigatorio faltando, id
+ * absurdo) violava NOT NULL e derrubava o lote todo com 500; o aparelho reenviava
+ * o mesmo lote para sempre e a sincronizacao dele nunca mais andava. Agora o ruim
+ * e descartado e contado, e o resto do lote segue.
+ */
+export function registroValido(registro: unknown, tabela: string): boolean {
+  if (!registro || typeof registro !== 'object') return false;
+  const r = registro as Record<string, unknown>;
+
+  if (typeof r.id !== 'string' || r.id.length === 0 || r.id.length > 100) return false;
+  if (typeof r.atualizadoEm !== 'number' || !Number.isFinite(r.atualizadoEm) || r.atualizadoEm < 0) {
+    return false;
+  }
+  if (r.excluidoEm !== null && r.excluidoEm !== undefined) {
+    if (typeof r.excluidoEm !== 'number' || !Number.isFinite(r.excluidoEm)) return false;
+  }
+
+  return (OBRIGATORIOS[tabela] ?? []).every(([campo, tipo]) =>
+    tipo === 'numero'
+      ? typeof r[campo] === 'number' && Number.isFinite(r[campo])
+      : typeof r[campo] === 'string' && (r[campo] as string).length > 0,
+  );
+}
+
 /**
  * O mesmo id duas vezes no lote faria o Postgres recusar o comando inteiro
  * ("cannot affect row a second time"). Fica o ultimo, que e o mais recente.
@@ -571,13 +611,45 @@ async function rodarSincronizacao(envio: EnvioSincronizacao): Promise<RespostaSi
     orcamentos: envio.orcamentos ?? [],
   };
 
+  const tetoDoCarimbo = Date.now() + MARGEM_DO_RELOGIO_MS;
+  let totalDescartados = 0;
+  const descartados: { tabela: string; id: string }[] = [];
+
   for (const tabela of TABELAS) {
-    const lote = semRepetidos(enviados[tabela.nome] ?? []);
+    const recebidos = enviados[tabela.nome];
+    const bruto = Array.isArray(recebidos) ? recebidos : [];
+    const validos: typeof bruto = [];
+    for (const registro of bruto) {
+      if (registroValido(registro, tabela.nome)) {
+        validos.push(registro);
+        continue;
+      }
+      totalDescartados += 1;
+      // O aparelho precisa saber QUAL foi recusado para tira-lo da fila.
+      const id = (registro as { id?: unknown } | null)?.id;
+      if (typeof id === 'string' && descartados.length < MAXIMO_DE_DESCARTADOS_NA_RESPOSTA) {
+        descartados.push({ tabela: tabela.nome, id: id.slice(0, 100) });
+      }
+    }
+
+    // O carimbo e o relogio do APARELHO. Um relogio adiantado venceria todo
+    // conflito para sempre, entao o servidor o limita ao presente (com margem).
+    const lote = semRepetidos(validos).map((registro) => ({
+      ...registro,
+      atualizadoEm: Math.min((registro as { atualizadoEm: number }).atualizadoEm, tetoDoCarimbo),
+    }));
     if (lote.length === 0) continue;
+
     const linhas = lote.map((registro) =>
       (tabela as Tabela<unknown>).paraBanco(registro as never),
     );
     await consultar(sqlUpsert(tabela as Tabela<unknown>), [JSON.stringify(linhas)]);
+  }
+
+  if (totalDescartados > 0) {
+    console.warn(
+      `Sincronizacao: ${totalDescartados} registro(s) invalido(s) descartado(s) do lote.`,
+    );
   }
 
   const saida: Record<string, ComVersao<unknown>[]> = {};
@@ -604,6 +676,9 @@ async function rodarSincronizacao(envio: EnvioSincronizacao): Promise<RespostaSi
     transferencias: saida.transferencias as ComVersao<Transferencia>[],
     regras: saida.regras as ComVersao<RegraCategoria>[],
     orcamentos: saida.orcamentos as ComVersao<Orcamento>[],
+    // So aparecem quando valem: aparelho antigo ignora, e a resposta de sempre fica igual.
+    ...(descartados.length > 0 ? { descartados } : {}),
+    ...(brutas.some((lista) => lista.length === LIMITE) ? { maisParaBaixar: true } : {}),
   };
 }
 

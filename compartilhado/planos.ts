@@ -57,15 +57,3 @@ export function planoValido(valor: unknown): Plano {
   return valor === 'pago' ? 'pago' : 'gratis';
 }
 
-/**
- * O horizonte que a previsao precisa cobrir.
- *
- * Passa do limite do plano quando ha meta mais longa: uma meta de 30 meses no
- * plano pago precisa dos 30 meses para ter data, senao a tela mostraria "nunca"
- * para algo perfeitamente alcançavel.
- */
-export function horizonteDePrevisao(plano: Plano, mesesAteAMetaMaisLonga = 0): number {
-  const base = limitesDo(plano).mesesDePrevisao;
-  if (!limitesDo(plano).simuladorCompleto) return base;
-  return Math.max(base, Math.min(mesesAteAMetaMaisLonga, 60));
-}

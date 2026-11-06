@@ -29,6 +29,10 @@ export function JanelaCentral({ aberta, onFechar, titulo, children }: Props) {
   useEffect(() => {
     const dialogo = ref.current;
     if (!aberta || !dialogo) return;
+    // Quem tinha o foco antes de abrir (o botao "Adicionar item", ou a linha do
+    // item editado). Ao fechar o foco volta para la: sem isso, quem usa teclado
+    // ou leitor de tela cai no topo da pagina e perde onde estava (WCAG 2.4.3).
+    const origem = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialogo.showModal();
     // O foco fica na propria janela, e nao no primeiro campo: o `showModal()`
     // focaria o nome do item, e o foco ali abre a lista de sugestoes por cima dos
@@ -36,6 +40,7 @@ export function JanelaCentral({ aberta, onFechar, titulo, children }: Props) {
     dialogo.focus();
     return () => {
       if (dialogo.open) dialogo.close();
+      if (origem?.isConnected) origem.focus();
     };
   }, [aberta]);
 

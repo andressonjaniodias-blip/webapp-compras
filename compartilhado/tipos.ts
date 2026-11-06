@@ -430,6 +430,16 @@ export interface RespostaSincronizacao {
   transferencias: ComVersao<Transferencia>[];
   regras: ComVersao<RegraCategoria>[];
   orcamentos: ComVersao<Orcamento>[];
+  /**
+   * Os registros do lote que o servidor recusou por serem invalidos (no maximo 50).
+   * O aparelho os tira da fila para nao reenvia-los para sempre. Ausente = nenhum.
+   */
+  descartados?: { tabela: string; id: string }[];
+  /**
+   * Alguma lista bateu no teto da rodada: ha mais para baixar. O aparelho repete
+   * o pedido ate isto sumir. Ausente = o aparelho ja sabe de tudo.
+   */
+  maisParaBaixar?: boolean;
 }
 
 /** Subtotal de um item a partir de quantidade e preco, sempre arredondado. */

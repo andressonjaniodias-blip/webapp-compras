@@ -17,6 +17,8 @@
  * ja pagou metade.
  */
 
+import { useConfirmar } from '../componentes/Confirmar';
+import { Carregando } from '../componentes/Carregando';
 import { useState } from 'react';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
 import { CampoNumero } from '../componentes/CampoNumero';
@@ -59,7 +61,7 @@ export function Dividas() {
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
@@ -69,7 +71,7 @@ export function Dividas() {
         </div>
       </header>
 
-      {carregando && <p className="carregando">Carregando…</p>}
+      {carregando && <Carregando />}
 
       {!carregando && dados.dividas.length === 0 && (
         <p className="vazio">
@@ -168,6 +170,8 @@ function FormDivida({
   contas: readonly { id: string; apelido: string }[];
   onFechar: () => Promise<void>;
 }) {
+  const confirmar = useConfirmar();
+
   async function mudar(mudancas: Partial<Omit<Divida, 'id'>>) {
     await atualizarDivida(divida.id, mudancas);
   }
@@ -184,7 +188,8 @@ function FormDivida({
    */
   const [parcelaEditada, setParcelaEditada] = useState<number | null>(null);
   const parcela =
-    parcelaEditada ?? (divida.parcelas > 0 ? Math.round(divida.valorTotal / divida.parcelas) : 0);
+    parcelaEditada ??
+    (divida.parcelas > 0 ? valorDaParcela(divida.valorTotal, divida.parcelas, 2) : 0);
 
   return (
     <div className="form-item">
@@ -281,7 +286,7 @@ function FormDivida({
         </p>
       )}
 
-      <label className="interruptor" style={{ marginTop: 12 }}>
+      <label className="interruptor topo-12">
         <input
           type="checkbox"
           checked={divida.descontoEmFolha}
@@ -329,7 +334,12 @@ function FormDivida({
           type="button"
           className="botao botao-perigo"
           onClick={async () => {
-            if (window.confirm('Excluir este empréstimo?')) {
+            const certeza = await confirmar({
+              texto: 'Excluir este empréstimo?',
+              rotulo: 'Excluir',
+              perigo: true,
+            });
+            if (certeza) {
               await excluirDivida(divida.id);
               await onFechar();
             }

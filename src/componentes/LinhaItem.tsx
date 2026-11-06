@@ -17,14 +17,20 @@ interface Props {
 export function LinhaItem({ item, onEditar, onRemover }: Props) {
   return (
     <li className="item-linha">
-      <div className="item-corpo" onClick={onEditar} role="button" tabIndex={0}
-           onKeyDown={(e) => e.key === 'Enter' && onEditar()}>
-        <div className="item-nome">{item.nome}</div>
-        <div className="item-meta">
+      {/* Um <button> de verdade, e nao uma div com role: ele ja traz o foco
+          visivel, o Enter e o Espaco, e o leitor de tela o anuncia como botao. */}
+      <button
+        type="button"
+        className="item-corpo"
+        onClick={onEditar}
+        aria-label={`Editar ${item.nome}`}
+      >
+        <span className="item-nome">{item.nome}</span>
+        <span className="item-meta">
           {formatarQuantidade(item.quantidade)} {item.unidade}
           {item.precoUnitario > 0 && ' × ' + formatarReais(item.precoUnitario)}
-        </div>
-      </div>
+        </span>
+      </button>
       <span className="item-valor">{formatarReais(item.total)}</span>
       <button
         type="button"

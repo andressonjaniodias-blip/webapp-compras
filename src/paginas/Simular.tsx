@@ -14,6 +14,8 @@
  * qualquer numero absoluto isolado.
  */
 
+import { contagem } from '../lib/texto';
+import { Carregando } from '../componentes/Carregando';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
@@ -51,8 +53,8 @@ export function Simular() {
 
   if (carregando) {
     return (
-      <div className="app">
-        <p className="carregando">Carregando…</p>
+      <div className="app" role="main">
+        <Carregando />
       </div>
     );
   }
@@ -86,7 +88,7 @@ export function Simular() {
       resultado.metasAtrasadas.length > 0);
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar(-1)}>
@@ -143,18 +145,26 @@ export function Simular() {
         />
       </div>
 
-      {resultado && (
-        <>
+      {/* O veredito muda a cada tecla. A regiao fica SEMPRE na pagina, vazia ou nao:
+          e o que faz o leitor de tela anunciar "Cabe" / "Aperta" / "Estoura" sem
+          tirar o foco do campo que a pessoa esta digitando. */}
+      <div role="status" aria-live="polite" aria-atomic="true">
+        {resultado && (
           <Veredito
             resultado={resultado}
             completo={limites.simuladorCompleto}
             estimativaFraca={estimativa.fraca}
           />
+        )}
+      </div>
+
+      {resultado && (
+        <>
 
           {temDetalhes && (
           <div className="cartao">
             {resultado.parcelas > 1 && (
-              <p style={{ marginTop: 0 }}>
+              <p className="sem-topo">
                 <strong>
                   {resultado.parcelas}x de {formatarReais(resultado.parcela)}
                 </strong>
@@ -162,7 +172,7 @@ export function Simular() {
               </p>
             )}
             {resultado.competenciaInicial && (
-              <p className="dica" style={{ marginTop: 0 }}>
+              <p className="dica sem-topo">
                 Cai na fatura que vence em{' '}
                 {formatarData(resultado.vencimentoEm ?? agora)} · você tem{' '}
                 <strong>{resultado.diasAtePagar} dias</strong> para pagar.
@@ -176,7 +186,7 @@ export function Simular() {
             {resultado.metasAtrasadas.map((meta) => (
               <p className="dica subiu" key={meta.descricao}>
                 Atrasa <strong>{meta.descricao}</strong> em{' '}
-                {Number.isFinite(meta.atrasoEmMeses) ? `${meta.atrasoEmMeses} mês(es)` : 'tempo indefinido'}.
+                {Number.isFinite(meta.atrasoEmMeses) ? contagem(meta.atrasoEmMeses, 'mês', 'meses') : 'tempo indefinido'}.
               </p>
             ))}
           </div>
@@ -282,7 +292,7 @@ function Veredito({
         <p>
           {completo && apertado
             ? `Sobram ${formatarReais(apertado.saldoAcumulado)} no mês mais magro.`
-            : `Cabe neste mês, mas cruza com ${resultado.apertosNovos} aperto(s) mais à frente.`}
+            : `Cabe neste mês, mas cruza com ${contagem(resultado.apertosNovos, 'aperto', 'apertos')} mais à frente.`}
         </p>
         {ressalva}
       </section>

@@ -15,20 +15,13 @@
  * "como fica" fora do app: da para filtrar por mes e mexer nas premissas a mao.
  */
 
-import writeExcelFile from 'write-excel-file/browser';
 import {
-  banco,
-  type CompraLocal,
-  type ContaLocal,
-  type DividaLocal,
-  type ItemLocal,
-  type MetaLocal,
-  type OrcamentoLocal,
-  type RegraLocal,
-  type RendaLocal,
-  type TransferenciaLocal,
-} from '../dados/banco';
-import { naoExcluido } from '../../compartilhado/tipos';
+  lerTudoParaBackup,
+  lerTudoVivo,
+  restaurarBackup,
+  type DadosDoBackup,
+  type TudoVivo,
+} from '../dados/backup';
 import { grupoDaCategoria } from '../../compartilhado/constantes';
 import {
   acharConta,
@@ -74,35 +67,11 @@ function cabecalho(titulos: string[]): Celula[] {
   return titulos.map((value) => ({ value, type: String, fontWeight: 'bold' as const }));
 }
 
-interface Tudo extends DadosFinanceiros {
-  compras: CompraLocal[];
-  itens: ItemLocal[];
-  contas: ContaLocal[];
-  rendas: RendaLocal[];
-  dividas: DividaLocal[];
-  metas: MetaLocal[];
-  transferencias: TransferenciaLocal[];
-  regras: RegraLocal[];
-}
-
-async function carregarTudo(): Promise<Tudo> {
-  const compras = (await banco.compras.toArray()).filter(naoExcluido);
-  compras.sort((a, b) => a.data - b.data);
-
-  return {
-    compras,
-    itens: (await banco.itens.toArray()).filter(naoExcluido),
-    contas: (await banco.contas.toArray()).filter(naoExcluido),
-    rendas: (await banco.rendas.toArray()).filter(naoExcluido),
-    dividas: (await banco.dividas.toArray()).filter(naoExcluido),
-    metas: (await banco.metas.toArray()).filter(naoExcluido),
-    transferencias: (await banco.transferencias.toArray()).filter(naoExcluido),
-    regras: (await banco.regras.toArray()).filter(naoExcluido),
-  };
-}
+/** O que as planilhas leem: o vivo do aparelho, no formato que as contas esperam. */
+type Tudo = DadosFinanceiros & TudoVivo;
 
 export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void> {
-  const tudo = await carregarTudo();
+  const tudo: Tudo = await lerTudoVivo();
   const agora = Date.now();
   const apelido = (id: string | null) => acharConta(tudo.contas, id)?.apelido ?? '';
 
@@ -363,6 +332,9 @@ export async function exportarExcel(nomeArquivo = 'compras.xlsx'): Promise<void>
       }),
   ];
 
+  // So baixa a biblioteca de planilha quando alguem pede a planilha: ela pesa mais que
+  // o resto do app junto, e a maioria das aberturas nunca exporta nada.
+  const { default: writeExcelFile } = await import('write-excel-file/browser');
   await writeExcelFile(
     [
       { data: abaCompras, sheet: 'Compras', stickyRowsCount: 1 },
@@ -393,7 +365,7 @@ function linhaCsv(valores: (string | number)[]): string {
 }
 
 export async function exportarCsv(nomeArquivo = 'compras.csv'): Promise<void> {
-  const tudo = await carregarTudo();
+  const tudo = await lerTudoVivo();
   const apelido = (id: string | null) => acharConta(tudo.contas, id)?.apelido ?? '';
 
   const linhas = [
@@ -445,42 +417,22 @@ export async function exportarCsv(nomeArquivo = 'compras.csv'): Promise<void> {
   );
 }
 
-export interface Backup {
+export interface Backup extends DadosDoBackup {
   formato: 'webapp-compras';
   versao: 1 | 2;
   exportadoEm: number;
-  compras: CompraLocal[];
-  itens: ItemLocal[];
-  contas?: ContaLocal[];
-  rendas?: RendaLocal[];
-  dividas?: DividaLocal[];
-  metas?: MetaLocal[];
-  transferencias?: TransferenciaLocal[];
-  regras?: RegraLocal[];
-  orcamentos?: OrcamentoLocal[];
 }
 
 /**
- * Backup completo, inclusive registros na lapide.
- *
- * As lapides vao de proposito: restaurar um backup sem elas ressuscitaria toda
- * compra ja excluida, e na sincronizacao seguinte elas voltariam para os outros
- * aparelhos tambem.
+ * Backup completo, inclusive registros na lapide (ver `lerTudoParaBackup`: as
+ * lapides vao de proposito, senao restaurar ressuscitaria o que foi excluido).
  */
 export async function exportarBackup(nomeArquivo = 'backup-compras.json'): Promise<void> {
   const backup: Backup = {
     formato: 'webapp-compras',
     versao: 2,
     exportadoEm: Date.now(),
-    compras: await banco.compras.toArray(),
-    itens: await banco.itens.toArray(),
-    contas: await banco.contas.toArray(),
-    rendas: await banco.rendas.toArray(),
-    dividas: await banco.dividas.toArray(),
-    metas: await banco.metas.toArray(),
-    transferencias: await banco.transferencias.toArray(),
-    regras: await banco.regras.toArray(),
-    orcamentos: await banco.orcamentos.toArray(),
+    ...(await lerTudoParaBackup()),
   };
 
   baixar(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), nomeArquivo);
@@ -489,16 +441,23 @@ export async function exportarBackup(nomeArquivo = 'backup-compras.json'): Promi
 /**
  * Restaura um backup. Os registros voltam marcados como pendentes para que a
  * proxima sincronizacao os reenvie — do contrario o aparelho ficaria com dados
- * que a nuvem nunca veria.
+ * que a nuvem nunca veria. So entra o que nao e mais velho que o que o aparelho ja
+ * tem: um backup antigo nao sobrescreve a edicao de ontem (ver `restaurarBackup`).
  *
  * Aceita a versao 1 (so compras e itens) e a 2. Recusar um backup v1 faria os
  * arquivos que o usuario ja salvou virarem lixo — e um backup que nao volta nao
  * e backup.
  */
 export async function importarBackup(texto: string): Promise<{ compras: number; itens: number }> {
-  const dados = JSON.parse(texto) as Partial<Backup>;
+  let dados: Partial<Backup>;
+  try {
+    dados = JSON.parse(texto) as Partial<Backup>;
+  } catch {
+    throw new Error('Este arquivo não é um backup do webapp-compras: o conteúdo está corrompido.');
+  }
 
   if (
+    !dados ||
     dados.formato !== 'webapp-compras' ||
     !Array.isArray(dados.compras) ||
     !Array.isArray(dados.itens)
@@ -506,34 +465,13 @@ export async function importarBackup(texto: string): Promise<{ compras: number; 
     throw new Error('Este arquivo não é um backup do webapp-compras.');
   }
 
-  const pendente = <T extends object>(lista: T[] | undefined) =>
-    (lista ?? []).map((registro) => ({ ...registro, pendente: 1 as const }));
-
-  const compras = dados.compras.map((c) => ({ ...c, pendente: 1 as const }));
-  const itens = dados.itens.map((i) => ({ ...i, pendente: 1 as const }));
-
-  await banco.transaction(
-    'rw',
-    [banco.compras, banco.itens, banco.contas, banco.rendas, banco.dividas, banco.metas,
-     banco.transferencias, banco.regras, banco.orcamentos],
-    async () => {
-      await banco.compras.bulkPut(compras);
-      await banco.itens.bulkPut(itens);
-      await banco.contas.bulkPut(pendente(dados.contas));
-      await banco.rendas.bulkPut(pendente(dados.rendas));
-      await banco.dividas.bulkPut(pendente(dados.dividas));
-      await banco.metas.bulkPut(pendente(dados.metas));
-      await banco.transferencias.bulkPut(pendente(dados.transferencias));
-      await banco.regras.bulkPut(pendente(dados.regras));
-      await banco.orcamentos.bulkPut(pendente(dados.orcamentos));
-    },
-  );
+  const entraram = await restaurarBackup(dados as DadosDoBackup);
 
   // Backup antigo pode trazer entrada recorrente: vira lancamento na hora, em vez
   // de esperar a proxima abertura do app.
   await materializarRendasRecorrentes();
 
-  return { compras: compras.length, itens: itens.length };
+  return entraram;
 }
 
 function baixar(conteudo: Blob, nomeArquivo: string): void {

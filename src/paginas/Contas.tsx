@@ -10,6 +10,8 @@
  * ele significa alguma coisa — cartao de credito nao tem saldo, tem fatura.
  */
 
+import { useConfirmar } from '../componentes/Confirmar';
+import { Carregando } from '../componentes/Carregando';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
@@ -47,7 +49,7 @@ export function Contas() {
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
@@ -57,7 +59,7 @@ export function Contas() {
         </div>
       </header>
 
-      {contas === undefined && <p className="carregando">Carregando…</p>}
+      {contas === undefined && <Carregando />}
 
       {contas !== undefined && contas.length === 0 && (
         <p className="vazio">
@@ -128,6 +130,7 @@ function FormConta({
   onPronto: () => Promise<void>;
   onExcluir: () => Promise<void>;
 }) {
+  const confirmar = useConfirmar();
   const [saldoNovo, setSaldoNovo] = useState<number | null>(null);
   const [dataNova, setDataNova] = useState<number | null>(null);
 
@@ -263,10 +266,13 @@ function FormConta({
         <button
           type="button"
           className="botao botao-perigo"
-          onClick={() => {
-            if (window.confirm('Excluir esta conta? As compras dela ficam sem conta definida.')) {
-              void onExcluir();
-            }
+          onClick={async () => {
+            const certeza = await confirmar({
+              texto: 'Excluir esta conta? As compras dela ficam sem conta definida.',
+              rotulo: 'Excluir',
+              perigo: true,
+            });
+            if (certeza) void onExcluir();
           }}
         >
           Excluir

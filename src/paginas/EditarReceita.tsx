@@ -9,6 +9,8 @@
  * campo grava ao mudar, como na compra — nao ha botao "Salvar" para esquecer.
  */
 
+import { useConfirmar } from '../componentes/Confirmar';
+import { Carregando } from '../componentes/Carregando';
 import { useRef } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
@@ -29,12 +31,13 @@ export function EditarReceita() {
   // junto com o voltar e leva para outro lugar.
   const saindo = useRef(false);
   const { atualizarPendentes } = useApp();
+  const confirmar = useConfirmar();
   const { dados, carregando } = useFinanceiro();
 
   if (carregando) {
     return (
-      <div className="app">
-        <p className="carregando">Carregando…</p>
+      <div className="app" role="main">
+        <Carregando />
       </div>
     );
   }
@@ -48,7 +51,12 @@ export function EditarReceita() {
   }
 
   async function apagar() {
-    if (!window.confirm('Excluir esta entrada? Isso some também dos outros aparelhos.')) return;
+    const certeza = await confirmar({
+      texto: 'Excluir esta entrada? Isso some também dos outros aparelhos.',
+      rotulo: 'Excluir',
+      perigo: true,
+    });
+    if (!certeza) return;
     saindo.current = true;
     await excluirRenda(id);
     await atualizarPendentes();
@@ -56,7 +64,7 @@ export function EditarReceita() {
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>

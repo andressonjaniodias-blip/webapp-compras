@@ -172,7 +172,3 @@ export function diasAtePagar(conta: Conta, ms: number): number {
   return Math.max(0, Math.round((vencimento - ms) / DIA_EM_MS));
 }
 
-/** A fatura ja fechou? Depois disso, o valor dela nao muda mais sozinho. */
-export function jaFechou(conta: Conta, competencia: string, agora: number): boolean {
-  return agora > fechamentoDe(conta, competencia);
-}

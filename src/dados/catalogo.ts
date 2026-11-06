@@ -106,7 +106,14 @@ export async function reconstruirCatalogo(): Promise<void> {
   const mapa = new Map<string, EntradaCatalogo>();
 
   const ordenados = itens
-    .filter((i: ItemLocal) => i.excluidoEm === null && i.nome.trim() !== '')
+    // Item de compra excluida nao entra nas sugestoes (invariante 6). A compra
+    // ausente (o item chegou antes dela) continua valendo: `undefined == null`.
+    .filter(
+      (i: ItemLocal) =>
+        i.excluidoEm === null &&
+        i.nome.trim() !== '' &&
+        porCompra.get(i.compraId)?.excluidoEm == null,
+    )
     .map((i) => ({ item: i, compra: porCompra.get(i.compraId) }))
     .map(({ item, compra }) => ({
       item,

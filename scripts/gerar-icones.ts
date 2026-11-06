@@ -10,18 +10,24 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
-const FUNDO = '#0f1720';
-const CLARO = '#4ade80';
+// As cores do tema escuro do app (`--fundo`, `--acento`) e o concreto do claro
+// (`--fundo`), que faz a sombra dura. O visual e brutalista: quina viva, nada de
+// raio nem degrade, e uma sombra deslocada que nao esmaece.
+const FUNDO = '#0a0a0a';
+const VERDE = '#2bd96b';
+const CONCRETO = '#d6d6d2';
 
 function svg(margem: number): string {
   const escala = (128 - margem) / 128;
+  const carrinho = (cor: string) => `<path d="M64 80h20l18 88h84l18-62H96" fill="none" stroke="${cor}"
+          stroke-width="20" stroke-linecap="square" stroke-linejoin="miter"/>
+    <rect x="96" y="184" width="26" height="26" fill="${cor}"/>
+    <rect x="164" y="184" width="26" height="26" fill="${cor}"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="${margem > 20 ? 0 : 56}" fill="${FUNDO}"/>
+  <rect width="256" height="256" fill="${FUNDO}"/>
   <g transform="translate(128 128) scale(${escala}) translate(-128 -128)">
-    <path d="M64 80h20l18 88h84l18-62H96" fill="none" stroke="${CLARO}"
-          stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="110" cy="196" r="12" fill="${CLARO}"/>
-    <circle cx="176" cy="196" r="12" fill="${CLARO}"/>
+    <g transform="translate(9 9)">${carrinho(CONCRETO)}</g>
+    ${carrinho(VERDE)}
   </g>
 </svg>`;
 }

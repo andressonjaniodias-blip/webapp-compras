@@ -18,6 +18,8 @@
  * das outras regras de conta. Aqui so se pergunta.
  */
 
+import { useConfirmar } from '../componentes/Confirmar';
+import { Carregando } from '../componentes/Carregando';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
@@ -36,6 +38,7 @@ import { useApp } from '../estado';
 export function Transferencias() {
   const navegar = useNavigate();
   const { atualizarPendentes } = useApp();
+  const confirmar = useConfirmar();
   const { dados, carregando } = useFinanceiro();
 
   const [origemId, setOrigemId] = useState('');
@@ -46,8 +49,8 @@ export function Transferencias() {
 
   if (carregando) {
     return (
-      <div className="app">
-        <p className="carregando">Carregando…</p>
+      <div className="app" role="main">
+        <Carregando />
       </div>
     );
   }
@@ -80,7 +83,7 @@ export function Transferencias() {
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/carteira')}>
@@ -92,10 +95,10 @@ export function Transferencias() {
 
       {!daParaTransferir ? (
         <div className="cartao">
-          <p style={{ marginTop: 0 }}>
+          <p className="sem-topo">
             Transferir precisa de duas contas: uma de onde o dinheiro sai e outra onde ele cai.
           </p>
-          <div className="acoes" style={{ marginTop: 0 }}>
+          <div className="acoes sem-topo">
             <button
               type="button"
               className="botao botao-primario botao-largo"
@@ -210,7 +213,12 @@ export function Transferencias() {
                     className="botao-icone"
                     aria-label="Desfazer transferência"
                     onClick={async () => {
-                      if (!window.confirm('Desfazer esta transferência? Os dois saldos voltam ao que eram.')) return;
+                      const certeza = await confirmar({
+                        texto: 'Desfazer esta transferência? Os dois saldos voltam ao que eram.',
+                        rotulo: 'Desfazer',
+                        perigo: true,
+                      });
+                      if (!certeza) return;
                       await excluirTransferencia(t.id);
                       await atualizarPendentes();
                     }}

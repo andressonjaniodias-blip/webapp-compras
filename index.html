@@ -4,13 +4,18 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
+    <!-- Sem `maximum-scale` nem `user-scalable=no`: quem precisa ampliar o texto
+         tem de poder (WCAG 1.4.4). O iOS so da zoom automatico em campo com fonte
+         menor que 16px, e os campos daqui tem 16px. -->
     <!-- Uma por tema: a barra do navegador acompanha o fundo. Com o tema fixado
          em Ajustes, `src/lib/tema.ts` iguala as duas. -->
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#d6d6d2" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
     <meta name="description" content="Registro pessoal de compras." />
+    <link rel="icon" href="/icone.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icone-192.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <!-- `default`, e nao `black-translucent`: a translucida poe letra branca na
          barra de status, que some sobre o fundo do tema claro. -->

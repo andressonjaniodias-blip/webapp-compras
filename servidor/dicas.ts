@@ -32,7 +32,7 @@ import {
   type DadosFinanceiros,
 } from '../compartilhado/carteira';
 import { chaveDoMes, intervaloDoMes, somarMeses } from '../compartilhado/fatura';
-import { vezesDa } from '../compartilhado/parcelamento';
+import { valorDaParcela, vezesDa } from '../compartilhado/parcelamento';
 import {
   estimarEntradaMensal,
   estimarGastoCorrente,
@@ -42,7 +42,8 @@ import {
   temBaseDeEntrada,
 } from '../compartilhado/previsao';
 import { modeloValido, type ModeloDeIa } from '../compartilhado/modelos';
-import { executar, folgaDoOrcamento } from '../compartilhado/orcamento';
+import { formatarData, nomeMes } from '../compartilhado/datas';
+import { executar, folgaDoOrcamento, mediaMensal } from '../compartilhado/orcamento';
 import {
   naoExcluido,
   normalizarNome,
@@ -143,6 +144,13 @@ Sobre a previsão, que é o que mais interessa a quem lê:
 - Aponte o mês mais apertado dos próximos meses e explique de onde vem o aperto.
 - Avalie se as metas cadastradas cabem no ritmo atual de sobra.`;
 
+/**
+ * Centavos inteiros -> "1852,00", so para o TEXTO do prompt. E a unica conversao
+ * de dinheiro fora de `src/lib/dinheiro.ts` (invariante 1), e esta aqui de
+ * proposito: o servidor nao importa `dinheiro.ts` (ele usa `Intl`, que depende do
+ * ICU do runtime), a entrada ja e inteira, e `/100` e `toFixed(2)` sao exatos para
+ * ela. Nada daqui volta como numero.
+ */
 const reais = (centavos: number) => (centavos / 100).toFixed(2).replace('.', ',');
 
 /** Uma linha por compra, com os itens indentados. Mais barato que JSON cru. */
@@ -164,7 +172,7 @@ function descrever(
 
   return compras
     .map((compra) => {
-      const dia = new Date(compra.data).toLocaleDateString('pt-BR');
+      const dia = formatarData(compra.data);
       const conta = compra.contaId ? apelidos.get(compra.contaId) : undefined;
       const vezes = vezesDa(compra);
       const partes = [
@@ -173,7 +181,17 @@ function descrever(
         compra.formaPagamento,
         `R$ ${reais(compra.total)}`,
       ];
-      if (vezes > 1) partes.push(`${vezes}x de R$ ${reais(Math.floor(compra.total / vezes))}`);
+      // A primeira parcela absorve o resto (invariante 11): "3x de 33,33" para
+      // R$ 100,00 mentiria um centavo, entao mostra a primeira e a das demais.
+      if (vezes > 1) {
+        const primeira = valorDaParcela(compra.total, vezes, 1);
+        const demais = valorDaParcela(compra.total, vezes, 2);
+        partes.push(
+          primeira === demais
+            ? `${vezes}x de R$ ${reais(primeira)}`
+            : `${vezes}x (1ª de R$ ${reais(primeira)}, demais de R$ ${reais(demais)})`,
+        );
+      }
       if (conta) partes.push(conta);
       if (compra.descricao) partes.push(compra.descricao);
       if (compra.observacao) partes.push('obs: ' + compra.observacao);
@@ -196,13 +214,8 @@ function totalizar(compras: readonly Compra[]): string {
   return `R$ ${reais(total)} em ${compras.length} compra(s)`;
 }
 
-function nomeDoMes(mes: string): string {
-  const [ano, numeroMes] = mes.split('-').map(Number);
-  return new Date(ano!, numeroMes! - 1, 1).toLocaleDateString('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-  });
-}
+/** "2026-11" -> "novembro de 2026", montado a mao (ver `compartilhado/datas.ts`). */
+const nomeDoMes = nomeMes;
 
 function validarMes(mes: string): void {
   const [ano, numeroMes] = mes.split('-').map(Number);
@@ -613,7 +626,7 @@ export async function comentarOrcamento(entrada: {
   const propostoDe = new Map(linhas.map((l) => [l.categoria, l.proposto]));
   const tetos = execucao.linhas.map(
     (l) =>
-      `  ${l.categoria}: teto anual R$ ${reais(l.teto)} (R$ ${reais(Math.round(l.teto / 12))}/mês) | proposto pelo app R$ ${reais(propostoDe.get(l.categoria) ?? 0)} | já gasto no ano R$ ${reais(l.gastoNoAno)}`,
+      `  ${l.categoria}: teto anual R$ ${reais(l.teto)} (R$ ${reais(mediaMensal(l.teto))}/mês) | proposto pelo app R$ ${reais(propostoDe.get(l.categoria) ?? 0)} | já gasto no ano R$ ${reais(l.gastoNoAno)}`,
   );
 
   const blocoDaFolga = folga

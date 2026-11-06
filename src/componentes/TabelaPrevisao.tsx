@@ -32,14 +32,15 @@ export function TabelaPrevisao({ linhas, visiveis, maisApertado }: Props) {
     <>
       <div className="rolagem">
         <table className="previsao">
+          <caption className="so-leitor">Previsão mês a mês: entra, comprometido, estimado, sobra e saldo</caption>
           <thead>
             <tr>
-              <th>Mês</th>
-              <th>Entra</th>
-              <th>Comprometido</th>
-              <th>Estimado</th>
-              <th>Sobra</th>
-              <th>Saldo</th>
+              <th scope="col">Mês</th>
+              <th scope="col">Entra</th>
+              <th scope="col">Comprometido</th>
+              <th scope="col">Estimado</th>
+              <th scope="col">Sobra</th>
+              <th scope="col">Saldo</th>
             </tr>
           </thead>
           <tbody>
@@ -72,7 +73,8 @@ export function TabelaPrevisao({ linhas, visiveis, maisApertado }: Props) {
                     </>
                   ) : (
                     <td colSpan={5} className="previsao-borrado">
-                      ▪▪▪▪▪
+                      <span aria-hidden="true">▪▪▪▪▪</span>
+                      <span className="so-leitor">disponível no plano pago</span>
                     </td>
                   )}
                 </tr>

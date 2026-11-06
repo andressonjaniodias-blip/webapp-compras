@@ -406,12 +406,6 @@ function descontosEmFolhaNoPeriodo(
 
 // ------------------------------------------------------------------ contas
 
-/** A compra tira dinheiro de uma conta na hora? Credito nao: vira fatura. */
-export function saiDoCaixa(compra: Compra, contas: readonly Conta[]): boolean {
-  const conta = acharConta(contas, compra.contaId);
-  return conta !== undefined && conta.tipo !== 'credito';
-}
-
 export function acharConta(
   contas: readonly Conta[],
   id: string | null | undefined,
@@ -746,6 +740,33 @@ export function gastoComDividasNoMes(
     }
   }
   return { total, parcelas };
+}
+
+/**
+ * O total de GASTOS do mes: o que se comprou mais o que os emprestimos ja custaram.
+ *
+ * Era a mesma soma escrita em tres telas (Painel, lista, Resumo); a quarta copia
+ * seria a que diverge. `comprado` vem de `resumirMes` (que mora em `src/lib`, por
+ * depender do tipo local), e `dividas` de `gastoComDividasNoMes`.
+ */
+export function gastoTotalDoMes(comprado: number, dividas: { total: number }): number {
+  return comprado + dividas.total;
+}
+
+/** Quanto ainda falta pagar em todos os emprestimos e financiamentos. */
+export function restanteDasDividas(lista: readonly Compromisso[]): number {
+  return lista
+    .filter((c) => c.origem === 'divida')
+    .reduce((soma, c) => soma + c.falta.restante, 0);
+}
+
+/** O total guardado e o total do alvo de todas as metas vivas. */
+export function totalDasMetas(metas: readonly Meta[]): { guardado: number; alvo: number } {
+  const vivas = metas.filter(naoExcluido);
+  return {
+    guardado: vivas.reduce((soma, m) => soma + m.guardado, 0),
+    alvo: vivas.reduce((soma, m) => soma + m.valorAlvo, 0),
+  };
 }
 
 /** Uma linha da fatura de um cartao, para a lista de gastos. */
@@ -1161,8 +1182,3 @@ export function mesesCompletosAntes(agora: number, quantos: number): string[] {
   return saida;
 }
 
-/** Aceita "2026-09" e devolve o primeiro instante do mes. Util nas telas. */
-export function inicioDaCompetencia(competencia: string): number {
-  const { ano, mes } = partesDaChave(competencia);
-  return new Date(ano, mes, 1).getTime();
-}

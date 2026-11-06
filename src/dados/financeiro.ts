@@ -11,6 +11,7 @@
  * pelas portas (`compras.ts` e `financas.ts`) atualiza a tela sozinha.
  */
 
+import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { listarCompras } from './compras';
 import {
@@ -59,27 +60,47 @@ const VAZIO: EstadoFinanceiro = {
   mostrar: false,
 };
 
+/**
+ * Uma consulta por tabela, e nao uma so lendo tudo.
+ *
+ * Com uma consulta unica, QUALQUER escrita (um item novo, uma preferencia) relia
+ * as seis tabelas e as duas configuracoes, e todo consumidor recalculava em cima de
+ * dados que nao mudaram. Agora cada tabela se atualiza sozinha, e `dados` so troca de
+ * identidade quando alguma das seis muda de fato — a tela que memoriza em cima dele
+ * deixa de recalcular por causa de uma preferencia.
+ */
 export function useFinanceiro(): EstadoFinanceiro {
-  const estado = useLiveQuery(async (): Promise<EstadoFinanceiro> => {
-    const [
-      contas, compras, rendas, dividas, metas, transferencias, modoSimples, gastoManual,
-      entradaManual,
-    ] =
-      await Promise.all([
-        listarContas(),
-        listarCompras(),
-        listarRendas(),
-        listarDividas(),
-        listarMetas(),
-        listarTransferencias(),
-        lerModoSimples(),
-        lerGastoManual(),
-        lerEntradaManual(),
-      ]);
+  const contas = useLiveQuery(listarContas, []);
+  const compras = useLiveQuery(listarCompras, []);
+  const rendas = useLiveQuery(listarRendas, []);
+  const dividas = useLiveQuery(listarDividas, []);
+  const metas = useLiveQuery(listarMetas, []);
+  const transferencias = useLiveQuery(listarTransferencias, []);
+  // `null` e um valor valido (sem numero digitado); `undefined` e "ainda lendo".
+  const modoSimples = useLiveQuery(lerModoSimples, []);
+  const gastoManual = useLiveQuery(lerGastoManual, []);
+  const entradaManual = useLiveQuery(lerEntradaManual, []);
 
-    const dados: DadosFinanceiros = { contas, compras, rendas, dividas, metas, transferencias };
-    const temContas = contas.length > 0;
-    const temRenda = rendas.length > 0;
+  const dados = useMemo<DadosFinanceiros | null>(
+    () =>
+      contas && compras && rendas && dividas && metas && transferencias
+        ? { contas, compras, rendas, dividas, metas, transferencias }
+        : null,
+    [contas, compras, rendas, dividas, metas, transferencias],
+  );
+
+  return useMemo<EstadoFinanceiro>(() => {
+    if (
+      !dados ||
+      modoSimples === undefined ||
+      gastoManual === undefined ||
+      entradaManual === undefined
+    ) {
+      return VAZIO;
+    }
+
+    const temContas = dados.contas.length > 0;
+    const temRenda = dados.rendas.length > 0;
 
     return {
       dados,
@@ -89,11 +110,9 @@ export function useFinanceiro(): EstadoFinanceiro {
       carregando: false,
       temContas,
       temRenda,
-      temMetas: metas.length > 0,
-      temDividas: dividas.length > 0,
+      temMetas: dados.metas.length > 0,
+      temDividas: dados.dividas.length > 0,
       mostrar: !modoSimples && (temContas || temRenda),
     };
-  }, []);
-
-  return estado ?? VAZIO;
+  }, [dados, modoSimples, gastoManual, entradaManual]);
 }

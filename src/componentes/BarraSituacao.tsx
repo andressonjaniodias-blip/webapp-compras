@@ -8,25 +8,31 @@
  */
 
 import { useApp } from '../estado';
+import { contagem } from '../lib/texto';
 
 export function BarraSituacao() {
   const { situacao, pendentes, offline, mensagem } = useApp();
 
   if (situacao === 'sincronizando') {
-    return <p className="aviso">Sincronizando… (o servidor pode levar até um minuto para acordar)</p>;
+    return (
+      <p className="aviso" role="status">
+        Sincronizando… (o servidor pode levar até um minuto para acordar)
+      </p>
+    );
   }
 
   if (offline && pendentes > 0) {
     return (
-      <p className="aviso aviso-atencao">
-        Sem conexão com o servidor. {pendentes} registro(s) esperando para subir — nada se perde,
-        eles sobem sozinhos quando a internet voltar.
+      <p className="aviso aviso-atencao" role="status">
+        Sem conexão com o servidor. {contagem(pendentes, 'registro esperando', 'registros esperando')}{' '}
+        para subir — nada se perde, {pendentes === 1 ? 'ele sobe' : 'eles sobem'} sozinho
+        {pendentes === 1 ? '' : 's'} quando a internet voltar.
       </p>
     );
   }
 
   if (situacao === 'erro' && mensagem) {
-    return <p className="aviso aviso-erro">{mensagem}</p>;
+    return <p className="aviso aviso-erro" role="alert">{mensagem}</p>;
   }
 
   return null;

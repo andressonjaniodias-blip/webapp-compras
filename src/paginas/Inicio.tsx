@@ -10,6 +10,7 @@
  * faria o painel piscar vazio, ou a lista aparecer e trocar de lugar.
  */
 
+import { Carregando } from '../componentes/Carregando';
 import { useFinanceiro } from '../dados/financeiro';
 import { ListaCompras } from './ListaCompras';
 import { Painel } from './Painel';
@@ -19,8 +20,8 @@ export function Inicio() {
 
   if (financeiro.carregando) {
     return (
-      <div className="app">
-        <p className="carregando">Carregando…</p>
+      <div className="app" role="main">
+        <Carregando />
       </div>
     );
   }

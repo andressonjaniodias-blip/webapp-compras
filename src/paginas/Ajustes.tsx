@@ -23,6 +23,7 @@
  * e por isso que a frase "vale so neste aparelho" precisa estar na tela.
  */
 
+import { contagem } from '../lib/texto';
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -37,6 +38,7 @@ import { categoriasPorItem } from '../dados/catalogo';
 import {
   criarRegra,
   excluirRegra,
+  restaurarRegra,
   gravarModoCategorizacao,
   gravarModoSimples,
   lerModoCategorizacao,
@@ -54,6 +56,7 @@ import { pedirRegras } from '../dados/api';
 import { formatarReais } from '../lib/dinheiro';
 import { formatarData, formatarDataHora } from '../lib/datas';
 import { gravarTema, lerTema, type Tema } from '../lib/tema';
+import { useDesfazer } from '../componentes/Desfazer';
 import { useApp } from '../estado';
 
 const TEMAS: readonly { valor: Tema; nome: string }[] = [
@@ -99,12 +102,12 @@ export function Ajustes() {
     if (!escolhido) return;
     await tentar(async () => {
       const resultado = await importarBackup(await escolhido.text());
-      return `Restaurados ${resultado.compras} compra(s) e ${resultado.itens} item(ns). Sincronize para enviá-los.`;
+      return `Restaurados ${contagem(resultado.compras, 'compra', 'compras')} e ${contagem(resultado.itens, 'item', 'itens')}. Sincronize para enviá-los.`;
     });
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={() => navegar('/')}>
@@ -115,10 +118,11 @@ export function Ajustes() {
       </header>
 
       {recado && <p className="aviso">{recado}</p>}
-      {erro && <p className="aviso aviso-erro">{erro}</p>}
+      {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
 
-      <h2 className="secao-titulo">Como o app funciona neste aparelho</h2>
+      <h2 className="secao-titulo" id="titulo-modo">Como o app funciona neste aparelho</h2>
       <div className="cartao">
+        <div role="radiogroup" aria-labelledby="titulo-modo">
         <label className="interruptor">
           <input
             type="radio"
@@ -132,7 +136,7 @@ export function Ajustes() {
           O caderno de anotações. Contas, cartões, faturas e previsão ficam escondidos.
         </p>
 
-        <label className="interruptor" style={{ marginTop: 12 }}>
+        <label className="interruptor topo-12">
           <input
             type="radio"
             name="modo-do-app"
@@ -146,6 +150,8 @@ export function Ajustes() {
           <strong> “posso comprar isto?”</strong> antes da compra.
         </p>
 
+        </div>
+
         <p className="dica">
           A escolha vale <strong>só neste aparelho</strong> e <strong>não apaga nada</strong>: o
           celular pode ficar simples enquanto o PC mostra tudo.
@@ -154,14 +160,14 @@ export function Ajustes() {
         {!simples && (
           <div className="acoes">
             <button type="button" className="botao botao-largo" onClick={() => navegar('/carteira')}>
-              Abrir o controle financeiro
+              Abrir a Carteira
             </button>
           </div>
         )}
       </div>
 
-      <h2 className="secao-titulo">Aparência</h2>
-      <div className="cartao">
+      <h2 className="secao-titulo" id="titulo-tema">Aparência</h2>
+      <div className="cartao" role="radiogroup" aria-labelledby="titulo-tema">
         {TEMAS.map((opcao) => (
           <label className="interruptor" key={opcao.valor}>
             <input
@@ -218,14 +224,14 @@ export function Ajustes() {
         <p style={{ margin: '0 0 10px' }}>
           {pendentes === 0
             ? 'Tudo sincronizado.'
-            : `${pendentes} registro(s) esperando para subir.`}
+            : `${contagem(pendentes, 'registro', 'registros')} esperando para subir.`}
           {offline && ' O servidor está inalcançável no momento.'}
         </p>
         <p className="dica" style={{ marginBottom: 12 }}>
           {ultimaEm ? 'Última vez: ' + formatarDataHora(ultimaEm) : 'Ainda não sincronizou neste aparelho.'}
         </p>
 
-        <div className="acoes" style={{ marginTop: 0 }}>
+        <div className="acoes sem-topo">
           <button
             type="button"
             className="botao botao-primario botao-largo"
@@ -242,7 +248,7 @@ export function Ajustes() {
             onClick={() =>
               void tentar(async () => {
                 const r = await reenviarTudo();
-                return `Reenviados ${r.enviados} registro(s) para a nuvem.`;
+                return `Reenviados ${contagem(r.enviados, 'registro', 'registros')} para a nuvem.`;
               })
             }
           >
@@ -257,7 +263,7 @@ export function Ajustes() {
 
       <h2 className="secao-titulo">Exportar</h2>
       <div className="cartao">
-        <div className="acoes" style={{ marginTop: 0 }}>
+        <div className="acoes sem-topo">
           <button
             type="button"
             className="botao botao-largo"
@@ -284,7 +290,7 @@ export function Ajustes() {
 
       <h2 className="secao-titulo">Backup</h2>
       <div className="cartao">
-        <div className="acoes" style={{ marginTop: 0 }}>
+        <div className="acoes sem-topo">
           <button
             type="button"
             className="botao botao-largo"
@@ -316,7 +322,7 @@ export function Ajustes() {
 
       <h2 className="secao-titulo">Conta</h2>
       <div className="cartao">
-        <p className="dica" style={{ marginTop: 0 }}>
+        <p className="dica sem-topo">
           Plano: <strong>{plano === 'pago' ? 'pago' : 'grátis'}</strong>. Dicas de IA:{' '}
           {!limites.ia
             ? 'do plano pago'
@@ -349,6 +355,7 @@ function RegrasDeCategoria({
 }) {
   const [buscando, setBuscando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const oferecerDesfazer = useDesfazer();
 
   async function pedirDaIa() {
     setBuscando(true);
@@ -379,10 +386,14 @@ function RegrasDeCategoria({
                 <button
                   type="button"
                   className="botao-icone"
-                  aria-label="Excluir regra"
+                  aria-label={`Excluir a regra "${regra.termo}"`}
                   onClick={async () => {
                     await excluirRegra(regra.id);
                     await onMudou();
+                    oferecerDesfazer(`Regra "${regra.termo}" excluída.`, async () => {
+                      await restaurarRegra(regra.id);
+                      await onMudou();
+                    });
                   }}
                 >
                   🗑
@@ -393,7 +404,7 @@ function RegrasDeCategoria({
         </ul>
       )}
 
-      {erro && <p className="aviso aviso-erro">{erro}</p>}
+      {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
 
       <button
         type="button"
@@ -466,7 +477,7 @@ function RevisaoRetroativa({ onPronto }: { onPronto: () => Promise<void> }) {
       {propostas !== null && propostas.length > 0 && (
         <>
           <p className="dica">
-            {propostas.length} sugestão(ões). Nada muda até você aceitar.
+            {contagem(propostas.length, 'sugestão', 'sugestões')}. Nada muda até você aceitar.
           </p>
           <ul className="lista">
             {propostas.map((proposta) => (

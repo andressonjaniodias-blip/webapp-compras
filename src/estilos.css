@@ -101,11 +101,24 @@
   --sombra-flutuante: 3px 3px 0 var(--tinta);
   --afunda: 2px;
   --rodape-fundo: #d6d6d2;
+  /* O veu sob a janela: preto nos dois temas, entao mora so aqui. */
+  --veu: rgb(0 0 0 / 0.55);
 
   --bw: 1.5px;
   --raio: 0;
   --raio-cartao: 0;
   --toque: 48px;
+
+  /* A escala de texto. Eram 20 tamanhos soltos (0.72, 0.75, 0.78, 0.8, 0.82...) e
+     o formulario do item, o mais usado no mercado, rotulava Quantidade, Preco e
+     Total em 11,5px. Nada que informe fica abaixo de --t-mini (13px). */
+  --t-mini: 0.8125rem;
+  --t-pequeno: 0.9rem;
+  --t-corpo: 1rem;
+  --t-forte: 1.1rem;
+  --t-destaque: 1.2rem;
+  --t-titulo: 1.5rem;
+  --t-total: 2.1rem;
 
   --fonte: 'Archivo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   /* O valor em fonte de largura fixa e a assinatura do cupom: parece impresso. */
@@ -205,6 +218,11 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* O rodape fixo (72px) nao pode cobrir o campo que ganhou foco: sem isto o
+   navegador rola so ate o campo encostar na borda, e ele fica por baixo da barra
+   (WCAG 2.4.11). */
+html { scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+
 html,
 body {
   margin: 0;
@@ -232,7 +250,10 @@ input[type='checkbox']:focus-visible {
 .app {
   max-width: 640px;
   margin: 0 auto;
-  padding: 0 16px calc(96px + env(safe-area-inset-bottom));
+  /* O `max()` mantem os 16px de sempre e so cresce se o aparelho tiver entalhe
+     nas laterais (o app girado em paisagem). */
+  padding: 0 max(16px, env(safe-area-inset-right)) calc(96px + env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
 }
 
 /* ------------------------------------------------------------------ topo */
@@ -254,7 +275,7 @@ input[type='checkbox']:focus-visible {
 .topo h1 {
   flex: 1;
   margin: 0;
-  font-size: 1.5rem;
+  font-size: var(--t-titulo);
   font-weight: 900;
   letter-spacing: -0.03em;
   line-height: 1.1;
@@ -270,7 +291,7 @@ input[type='checkbox']:focus-visible {
   background: var(--superficie);
   box-shadow: var(--sombra);
   color: var(--texto);
-  font-size: 1.2rem;
+  font-size: var(--t-destaque);
   cursor: pointer;
 }
 
@@ -307,7 +328,7 @@ input[type='checkbox']:focus-visible {
 
   .rotulo-largo {
     display: inline;
-    font-size: 0.9rem;
+    font-size: var(--t-pequeno);
     font-weight: 600;
     white-space: nowrap;
   }
@@ -359,7 +380,7 @@ input[type='checkbox']:focus-visible {
 }
 
 .painel-titulo {
-  font-size: 0.95rem;
+  font-size: var(--t-pequeno);
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--texto);
@@ -380,7 +401,7 @@ input[type='checkbox']:focus-visible {
 .painel-numero {
   font-family: var(--fonte-valor);
   font-variant-numeric: tabular-nums;
-  font-size: 1.2rem;
+  font-size: var(--t-destaque);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -389,7 +410,7 @@ input[type='checkbox']:focus-visible {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-size: 0.85rem;
+  font-size: var(--t-pequeno);
 }
 
 .painel-linha > span:first-child {
@@ -406,7 +427,7 @@ input[type='checkbox']:focus-visible {
 }
 
 .painel-ver {
-  font-size: 0.85rem;
+  font-size: var(--t-pequeno);
   font-weight: 800;
   color: var(--texto);
 }
@@ -443,7 +464,7 @@ input[type='checkbox']:focus-visible {
 
 .dica {
   color: var(--texto-fraco);
-  font-size: 0.85rem;
+  font-size: var(--t-pequeno);
   margin: 6px 0 0;
 }
 
@@ -453,7 +474,7 @@ input[type='checkbox']:focus-visible {
   border-radius: var(--raio);
   padding: 10px 12px;
   margin-bottom: 12px;
-  font-size: 0.9rem;
+  font-size: var(--t-pequeno);
 }
 
 .aviso-erro {
@@ -480,7 +501,7 @@ input[type='checkbox']:focus-visible {
 
 .campo-rotulo {
   display: block;
-  font-size: 0.8rem;
+  font-size: var(--t-mini);
   font-weight: 600;
   color: var(--texto-fraco);
   margin-bottom: 6px;
@@ -590,13 +611,13 @@ textarea.entrada {
 }
 
 .chip {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   border: var(--bw) solid var(--borda);
   border-radius: var(--raio);
   background: var(--superficie);
   color: var(--texto);
-  font-size: 0.92rem;
+  font-size: var(--t-pequeno);
   font-family: inherit;
   cursor: pointer;
 }
@@ -643,7 +664,7 @@ textarea.entrada {
 }
 
 .compra-meta {
-  font-size: 0.82rem;
+  font-size: var(--t-mini);
   color: var(--texto-fraco);
 }
 
@@ -651,7 +672,7 @@ textarea.entrada {
   font-family: var(--fonte-valor);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: var(--t-forte);
   white-space: nowrap;
 }
 
@@ -664,9 +685,22 @@ textarea.entrada {
 }
 
 .item-linha:last-child { border-bottom: none; }
-.item-corpo { flex: 1; min-width: 0; }
-.item-nome { font-weight: 600; }
-.item-meta { font-size: 0.8rem; color: var(--texto-fraco); }
+/* Um <button> que parece texto: o corpo do item inteiro e o alvo de toque. */
+.item-corpo {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.item-nome { display: block; font-weight: 600; }
+.item-meta { display: block; font-size: var(--t-mini); color: var(--texto-fraco); }
 
 .item-valor {
   font-family: var(--fonte-valor);
@@ -702,7 +736,7 @@ textarea.entrada {
 
 .mini-rotulo {
   display: block;
-  font-size: 0.72rem;
+  font-size: var(--t-mini);
   color: var(--texto-fraco);
   margin-bottom: 4px;
 }
@@ -718,7 +752,7 @@ textarea.entrada {
 
 .conferencia {
   flex: 2;
-  font-size: 0.8rem;
+  font-size: var(--t-mini);
   color: var(--aperta-texto);
   line-height: 1.3;
 }
@@ -763,7 +797,7 @@ textarea.entrada {
 
 .sugestao-preco {
   font-family: var(--fonte-valor);
-  font-size: 0.8rem;
+  font-size: var(--t-mini);
   color: var(--texto-fraco);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -773,7 +807,7 @@ textarea.entrada {
 
 .total-grande {
   font-family: var(--fonte-valor);
-  font-size: 2.1rem;
+  font-size: var(--t-total);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.04em;
@@ -790,7 +824,7 @@ textarea.entrada {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  font-size: 0.92rem;
+  font-size: var(--t-pequeno);
 }
 
 /* O segundo filho e sempre o valor da linha. */
@@ -811,7 +845,7 @@ textarea.entrada {
 
 .selo {
   display: inline-block;
-  font-size: 0.75rem;
+  font-size: var(--t-mini);
   font-weight: 800;
   padding: 2px 8px;
   border: 1px solid var(--borda);
@@ -882,7 +916,7 @@ textarea.entrada {
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   margin-top: 8px;
   padding: 8px 12px;
   border: var(--bw) solid var(--borda);
@@ -890,7 +924,7 @@ textarea.entrada {
   background: var(--superficie);
   color: var(--texto);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--t-pequeno);
   text-align: left;
   cursor: pointer;
 }
@@ -918,7 +952,7 @@ textarea.entrada {
 .previsao {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: var(--t-mini);
   font-variant-numeric: tabular-nums;
 }
 
@@ -931,7 +965,7 @@ textarea.entrada {
 }
 
 .previsao thead th {
-  font-size: 0.78rem;
+  font-size: var(--t-mini);
   color: var(--texto);
   font-weight: 800;
   background: var(--superficie-alta);
@@ -964,7 +998,7 @@ textarea.entrada {
 .previsao-parcial {
   color: var(--texto-fraco);
   font-weight: 400;
-  font-size: 0.75rem;
+  font-size: var(--t-mini);
 }
 
 /* O grátis mostra que existe resposta e esconde o numero. O calculo e real. */
@@ -1007,7 +1041,7 @@ textarea.entrada {
 
 .veredito strong {
   display: block;
-  font-size: 1.5rem;
+  font-size: var(--t-titulo);
   font-weight: 900;
   letter-spacing: -0.03em;
   line-height: 1.15;
@@ -1015,7 +1049,7 @@ textarea.entrada {
 
 .veredito p {
   margin: 4px 0 0;
-  font-size: 0.9rem;
+  font-size: var(--t-pequeno);
   color: var(--sobre-estado);
 }
 
@@ -1042,7 +1076,7 @@ textarea.entrada {
 }
 
 .chip-novo {
-  font-size: 1.2rem;
+  font-size: var(--t-destaque);
   line-height: 1;
   padding-left: 14px;
   padding-right: 14px;
@@ -1090,7 +1124,7 @@ textarea.entrada {
   margin-top: 8px !important;
   padding-top: 8px;
   border-top: 1px solid var(--sobre-estado);
-  font-size: 0.82rem !important;
+  font-size: var(--t-mini) !important;
 }
 
 /* --------------------------------------------------- razao do mes (resumo) */
@@ -1119,7 +1153,7 @@ textarea.entrada {
   gap: 8px;
   align-items: baseline;
   padding: 3px 0;
-  font-size: 0.92rem;
+  font-size: var(--t-pequeno);
 }
 
 .razao-valor {
@@ -1142,13 +1176,13 @@ textarea.entrada {
 
 .razao-total {
   font-weight: 700;
-  font-size: 1.02rem;
+  font-size: var(--t-forte);
 }
 
 /* A quebra do "o que eu comprei": subordinada ao total, entao atenuada. */
 .razao-linha-filha {
   color: var(--texto-fraco);
-  font-size: 0.86rem;
+  font-size: var(--t-pequeno);
   padding: 2px 0;
 }
 
@@ -1164,7 +1198,7 @@ textarea.entrada {
 .mes-navegador > strong {
   flex: 1;
   text-align: center;
-  font-size: 1.02rem;
+  font-size: var(--t-forte);
 }
 
 .mes-navegador .botao-icone:disabled { opacity: 0.3; }
@@ -1175,7 +1209,7 @@ textarea.entrada {
   justify-content: space-between;
   gap: 10px;
   margin: 0 2px 14px;
-  font-size: 0.92rem;
+  font-size: var(--t-pequeno);
   color: var(--texto-fraco);
 }
 
@@ -1228,13 +1262,15 @@ textarea.entrada {
 
 .janela:focus { outline: none; }
 
-.janela::backdrop { background: rgb(0 0 0 / 0.55); }
+/* O `::backdrop` so herda variavel de navegador novo, entao o valor de reserva
+   repete a cor do token: sem ele, num navegador antigo o veu some. */
+.janela::backdrop { background: var(--veu, rgb(0 0 0 / 0.55)); }
 
 .janela-corpo { padding: 14px 16px 16px; }
 
 .janela-titulo {
   margin: 0 0 12px;
-  font-size: 1.1rem;
+  font-size: var(--t-forte);
   font-weight: 900;
   letter-spacing: -0.02em;
 }
@@ -1259,7 +1295,8 @@ body:has(dialog.janela[open]) { overflow: hidden; }
   width: 100%;
   background: none;
   border: none;
-  padding: 0;
+  padding: 6px 0;
+  min-height: 44px;
   margin: 0;
   color: inherit;
   font: inherit;
@@ -1268,7 +1305,7 @@ body:has(dialog.janela[open]) { overflow: hidden; }
 }
 
 .fatia-delta {
-  font-size: 0.8rem;
+  font-size: var(--t-mini);
   margin-left: 6px;
 }
 
@@ -1304,7 +1341,7 @@ body:has(dialog.janela[open]) { overflow: hidden; }
 .grafico-leitura {
   min-height: 2.9em;
   margin: 0 0 8px;
-  font-size: 0.92rem;
+  font-size: var(--t-pequeno);
   line-height: 1.4;
   color: var(--texto-fraco);
 }
@@ -1323,7 +1360,7 @@ body:has(dialog.janela[open]) { overflow: hidden; }
 
 .gr-texto {
   font-family: var(--fonte-valor);
-  font-size: 11px;
+  font-size: 12px;
   fill: var(--texto-fraco);
 }
 
@@ -1410,7 +1447,7 @@ body:has(dialog.janela[open]) { overflow: hidden; }
   gap: 5px;
   padding: 2px 9px;
   border: 1px solid var(--borda);
-  font-size: 0.82rem;
+  font-size: var(--t-mini);
   font-weight: 800;
   color: var(--sobre-estado);
   white-space: nowrap;
@@ -1428,7 +1465,7 @@ body:has(dialog.janela[open]) { overflow: hidden; }
   margin: 10px 0 0;
   padding: 0;
   list-style: none;
-  font-size: 0.85rem;
+  font-size: var(--t-pequeno);
 }
 
 .grafico-legenda i {
@@ -1462,7 +1499,7 @@ body:has(dialog.janela[open]) { overflow: hidden; }
   margin-top: 3px;
   font-family: var(--fonte-valor);
   font-variant-numeric: tabular-nums;
-  font-size: 0.9rem;
+  font-size: var(--t-pequeno);
 }
 
 .barra-estado-valores > span:first-child {
@@ -1522,7 +1559,7 @@ body:has(dialog.janela[open]) { overflow: hidden; }
   align-items: baseline;
   gap: 6px;
   width: 100%;
-  padding: 8px 0;
+  padding: 12px 0;
   background: none;
   border: 0;
   color: inherit;
@@ -1565,14 +1602,14 @@ body:has(dialog.janela[open]) { overflow: hidden; }
   width: 3.6ch;
   text-align: right;
   font-family: var(--fonte-valor);
-  font-size: 0.8rem;
+  font-size: var(--t-mini);
   color: var(--texto-fraco);
 }
 
 .cupom-delta {
   display: block;
   margin: -4px 0 6px 18px;
-  font-size: 0.8rem;
+  font-size: var(--t-mini);
 }
 
 .cupom-total {
@@ -1620,7 +1657,7 @@ body:has(dialog.janela[open]) { overflow: hidden; }
 .preco-nome small {
   display: block;
   font-family: var(--fonte-valor);
-  font-size: 0.8rem;
+  font-size: var(--t-mini);
   font-weight: 400;
   color: var(--texto-fraco);
 }
@@ -1634,7 +1671,7 @@ body:has(dialog.janela[open]) { overflow: hidden; }
   padding: 2px 8px;
   border: 1px solid var(--borda);
   font-family: var(--fonte-valor);
-  font-size: 0.85rem;
+  font-size: var(--t-pequeno);
   font-weight: 700;
   color: var(--sobre-estado);
 }
@@ -1648,3 +1685,156 @@ body:has(dialog.janela[open]) { overflow: hidden; }
     transition: opacity 120ms linear;
   }
 }
+
+/* ================================================== utilitarios e acessibilidade
+   Seis classes no lugar de ~90 `style={{...}}` repetidos nas paginas: o estilo
+   inline fura o sistema (nao respeita tema, nao se acha, nao se muda de uma vez). */
+
+.sem-topo { margin-top: 0; }
+.topo-12 { margin-top: 12px; }
+.linha-entre {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.acoes-linha {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 0;
+}
+.acoes-linha > * { flex: 1; }
+/* `.dica` e a explicacao em cinza; `.texto` e o mesmo tamanho com a cor do texto,
+   para a frase que o usuario precisa ler (o dado de decisao nao pode ficar fraco). */
+.texto {
+  margin: 4px 0;
+  font-size: var(--t-pequeno);
+  color: var(--texto);
+}
+.lista-limpa {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* O subtitulo de uma secao: h3, abaixo do h2 da secao, e que nao disputa com ele. */
+.secao-subtitulo {
+  margin: 16px 0 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px dashed var(--borda);
+  font-size: var(--t-forte);
+  font-weight: 800;
+}
+
+/* ------------------------------------------------------------ Desfazer / Confirmar */
+
+.desfazer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  /* A faixa inteira nao captura toque: so o aviso (texto + botao) captura. */
+  pointer-events: none;
+}
+
+.desfazer > * { pointer-events: auto; }
+
+/* O aviso: texto e botao colados, na mesma caixa de contorno. */
+.desfazer > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--toque);
+  padding: 0 14px;
+  background: var(--superficie);
+  border: var(--bw) solid var(--borda);
+  border-right: none;
+  box-shadow: var(--sombra);
+  font-weight: 700;
+}
+
+.desfazer > button {
+  min-height: var(--toque);
+  box-shadow: var(--sombra);
+}
+
+/* O aviso de versao nova fica ACIMA do "Desfazer": os dois podem aparecer juntos. */
+.desfazer-alto { bottom: calc(144px + env(safe-area-inset-bottom)); }
+
+.confirmar-texto {
+  margin: 0 0 14px;
+  font-size: var(--t-corpo);
+}
+
+/* Cores forcadas (modo de alto contraste do Windows): o app so usa contorno e forma
+   para separar as coisas, mas o fundo das barras e dos selos some. Garante a borda. */
+@media (forced-colors: active) {
+  .selo,
+  .selo-estado,
+  .cartao,
+  .botao,
+  .compra {
+    border: 2px solid CanvasText;
+  }
+
+  .gr-contorno,
+  .gr-acento {
+    stroke: CanvasText;
+  }
+}
+
+/* ----------------------------------------------- macrocategoria recolhivel */
+
+.macro { margin-top: 12px; }
+
+.macro > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--borda);
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.macro > summary::-webkit-details-marker { display: none; }
+
+/* O triangulo e enfeite: aberto ou fechado ja vai no proprio <details>. A segunda
+   declaracao (com texto alternativo vazio) o esconde do leitor de tela nos
+   navegadores que a entendem; nos outros vale a primeira. */
+.macro > summary::before { content: '\25B8'; margin-right: 6px; }
+.macro > summary::before { content: '\25B8' / ''; }
+.macro[open] > summary::before { content: '\25BE'; }
+.macro[open] > summary::before { content: '\25BE' / ''; }
+
+.macro > ul { margin-top: 8px; }
+
+.cartao hr {
+  border: 0;
+  border-top: 1px dashed var(--borda);
+  margin: 8px 0;
+}
+
+/* Texto so para o leitor de tela: "subiu" ao lado do triangulo que o desenha. */
+.so-leitor {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* O titulo da pagina recebe o foco ao trocar de rota (AnunciaRota) para o leitor de tela
+   le-lo. Nao e um controle, entao nao leva o anel de foco. */
+h1:focus { outline: none; }

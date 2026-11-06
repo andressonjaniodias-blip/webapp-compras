@@ -22,17 +22,10 @@
  * dao o mesmo resultado em qualquer lugar.
  */
 
-const MESES = [
-  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
-] as const;
+import { doisDigitos, formatarData, nomeMes } from '../../compartilhado/datas';
 
-const doisDigitos = (n: number) => String(n).padStart(2, '0');
-
-export function formatarData(ms: number): string {
-  const d = new Date(ms);
-  return `${doisDigitos(d.getDate())}/${doisDigitos(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
+// A mesma data e o mesmo mes por extenso que o servidor usa: uma copia so.
+export { formatarData, nomeMes };
 
 export function formatarDataCurta(ms: number): string {
   const d = new Date(ms);
@@ -86,34 +79,25 @@ export function deInputData(texto: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-/** Chave de agrupamento por mes: "2026-08". Ordena alfabeticamente e cronologicamente. */
-export function chaveMes(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
+/*
+ * Chave de mes ("2026-08"), mes anterior e intervalo de um mes: UMA copia, a de
+ * `compartilhado/fatura.ts`, que o servidor tambem usa. Havia duas, identicas, e a
+ * que alguem corrigisse sozinha faria o app e a IA discordarem sobre o que e "o mes".
+ */
+import { chaveDoMes, intervaloDoMes, somarMeses } from '../../compartilhado/fatura';
 
-/** "2026-08" -> "agosto de 2026". Pelo mesmo motivo do topo, sem `Intl`. */
-export function nomeMes(chave: string): string {
-  const [ano, mes] = chave.split('-');
-  const indice = Number(mes) - 1;
-  const nome = MESES[indice] ?? '';
-  return nome ? `${nome} de ${ano}` : String(ano);
-}
+/** Chave de agrupamento por mes: "2026-08". Ordena alfabeticamente e cronologicamente. */
+export const chaveMes = chaveDoMes;
 
 /** "2026-08" -> a chave do mes anterior, para comparar um mes com o outro. */
-export function mesAnterior(chave: string): string {
-  const [ano, mes] = chave.split('-');
-  const d = new Date(Number(ano), Number(mes) - 1, 1);
-  d.setMonth(d.getMonth() - 1);
-  return chaveMes(d.getTime());
-}
+export const mesAnterior = (chave: string): string => somarMeses(chave, -1);
 
 /** Primeiro e ultimo instante de um mes, para filtrar por intervalo. */
-export function intervaloDoMes(chave: string): { inicio: number; fim: number } {
-  const [ano, mes] = chave.split('-');
-  const inicio = new Date(Number(ano), Number(mes) - 1, 1, 0, 0, 0, 0).getTime();
-  const fim = new Date(Number(ano), Number(mes), 1, 0, 0, 0, 0).getTime() - 1;
-  return { inicio, fim };
+export { intervaloDoMes };
+
+/** "2026-11" -> "novembro". O ano so atrapalha num rotulo de uma linha. */
+export function apenasMes(chave: string): string {
+  return nomeMes(chave).replace(/ de \d{4}$/, '');
 }
 
 /** Chave do mes de hoje. */

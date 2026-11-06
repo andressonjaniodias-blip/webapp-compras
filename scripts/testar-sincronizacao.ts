@@ -407,6 +407,52 @@ async function principal(): Promise<void> {
     'cursor=' + zerado.cursor,
   );
 
+  console.log('\n13b. Registro invalido, carimbo no futuro e lista que nao e lista nao travam a fila');
+  const T13 = Date.now();
+  const semData = { ...compraExemplo('compra-sem-data', T13, 1), data: undefined } as unknown as Compra;
+  const doFuturo = compraExemplo('compra-do-futuro', T13 + 10 * 365 * 86_400_000, 700);
+  const mistura = await sincronizar({
+    cursor: zerado.cursor,
+    compras: [
+      semData,
+      compraExemplo('compra-valida', T13, 800),
+      doFuturo,
+      null as unknown as Compra,
+    ],
+    itens: [],
+    contas: 'isto nao e uma lista' as unknown as Conta[],
+  });
+  conferir('o lote com registro ruim nao derrubou a rodada', Array.isArray(mistura.compras));
+  conferir('a compra valida do mesmo lote foi gravada', mistura.compras.some((c) => c.id === 'compra-valida'));
+  conferir('a sem data nao entrou', !mistura.compras.some((c) => c.id === 'compra-sem-data'));
+  conferir(
+    'e o servidor diz qual foi recusada, para o aparelho tira-la da fila',
+    mistura.descartados?.some((d) => d.tabela === 'compras' && d.id === 'compra-sem-data') === true,
+    JSON.stringify(mistura.descartados),
+  );
+  const noServidor = mistura.compras.find((c) => c.id === 'compra-do-futuro');
+  conferir(
+    'o carimbo 10 anos no futuro foi limitado ao presente',
+    noServidor !== undefined && noServidor.atualizadoEm <= Date.now() + 6 * 60_000,
+    String(noServidor?.atualizadoEm),
+  );
+  conferir('a resposta normal nao traz campos de aviso', zerado.descartados === undefined && zerado.maisParaBaixar === undefined);
+
+  console.log('\n13c. Uma carga grande vem em varias rodadas, sem pular registro');
+  const T14 = Date.now();
+  const carga = Array.from({ length: 2100 }, (_, i) => compraExemplo('carga-' + i, T14, i + 1));
+  const primeira = await sincronizar({ cursor: mistura.cursor, compras: carga, itens: [] });
+  conferir('a primeira rodada vem cortada no teto e avisa', primeira.maisParaBaixar === true, String(primeira.maisParaBaixar));
+  conferir('com 2000 compras', primeira.compras.length === 2000, String(primeira.compras.length));
+
+  const segunda = await sincronizar({ cursor: primeira.cursor, compras: [], itens: [] });
+  conferir('a segunda rodada nao avisa mais', segunda.maisParaBaixar === undefined);
+  conferir('o cursor avancou', segunda.cursor > primeira.cursor, `${primeira.cursor} -> ${segunda.cursor}`);
+
+  const vistas = new Set([...primeira.compras, ...segunda.compras].map((c) => c.id));
+  const faltando = carga.filter((c) => !vistas.has(c.id));
+  conferir('as duas rodadas juntas trouxeram as 2100, nenhuma pulada', faltando.length === 0, `faltam ${faltando.length}`);
+
   await testarAutocuraDoEsquema(consultar);
 
   console.log('');

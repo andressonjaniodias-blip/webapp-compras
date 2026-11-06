@@ -106,7 +106,7 @@ export function LinhaSaldo({
         )}
       </figcaption>
 
-      <svg viewBox={`0 0 ${LARGURA} ${ALTURA}`} role="img" aria-label={resumo}>
+      <svg viewBox={`0 0 ${LARGURA} ${ALTURA}`} role="group" aria-label={resumo}>
         <defs>
           <clipPath id={id + 'abaixo'}>
             <rect x="0" y={y0} width={LARGURA} height={ALTURA} />

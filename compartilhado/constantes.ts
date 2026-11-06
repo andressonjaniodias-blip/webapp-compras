@@ -154,4 +154,3 @@ export const CONTAS_POR_FORMA: Readonly<Record<string, readonly string[]>> = {
 export const CATEGORIA_PADRAO: string = CATEGORIAS[0];
 export const FORMA_PAGAMENTO_PADRAO: string = FORMAS_PAGAMENTO[0];
 export const UNIDADE_PADRAO: string = UNIDADES[0];
-export const ORIGEM_RENDA_PADRAO: string = ORIGENS_RENDA[0];

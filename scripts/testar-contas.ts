@@ -34,11 +34,15 @@ import {
   materializarRenda,
   ocorrenciasDeRenda,
   gastoComDividasNoMes,
+  gastoTotalDoMes,
   parcelasQuitadasDaCompetencia,
+  restanteDasDividas,
   resumoDoMes,
   saldoDaConta,
+  totalDasMetas,
   type DadosFinanceiros,
 } from '../compartilhado/carteira';
+import { filtrarBackupMaisNovo } from '../compartilhado/backup';
 import {
   competenciaDe,
   diaDoMesSeguro,
@@ -2690,6 +2694,71 @@ console.log('\n22b. Orcamento: limite do mes que se ajusta ao gasto, e macrocate
   igual('rascunho: Alimentacao soma 150', rascunho.find((m) => m.macro === 'Alimentação')!.teto, 150);
   igual('rascunho: Moradia soma 7', rascunho.find((m) => m.macro === 'Moradia')!.teto, 7);
   igual('rascunho: sem bloco vazio', rascunho.length, 2);
+}
+
+// ============= 23. backup que nao sobrescreve o novo, totais unicos, datas a mao
+
+/*
+ * Tres coisas que nasceram de auditoria:
+ *  - restaurar um backup velho apagava a edicao local que ainda nao tinha subido;
+ *  - o mesmo total do mes era somado em tres telas (a quarta copia divergiria);
+ *  - o servidor montava datas com `toLocaleDateString`, que depende do runtime.
+ */
+console.log('\n23. Backup respeita o mais novo; totais do painel vem de uma funcao so');
+{
+  const noAparelho = [
+    { id: 'a', atualizadoEm: 2000 },
+    { id: 'b', atualizadoEm: 1000 },
+  ];
+  const doArquivo = [
+    { id: 'a', atualizadoEm: 1000, nome: 'velho' }, // o aparelho tem um mais novo
+    { id: 'b', atualizadoEm: 3000, nome: 'novo' }, // o arquivo tem um mais novo
+    { id: 'c', atualizadoEm: 500, nome: 'so no arquivo' }, // o aparelho nao tem
+    { id: 'd', atualizadoEm: 1000, nome: 'igual' },
+  ];
+  const entram = filtrarBackupMaisNovo(doArquivo, [...noAparelho, { id: 'd', atualizadoEm: 1000 }]);
+  igual('so entram os que o aparelho nao tem ou que sao mais novos', entram.map((r) => r.id).join(','), 'b,c');
+  igual('backup velho sobre aparelho novo nao troca nada', filtrarBackupMaisNovo([{ id: 'a', atualizadoEm: 1 }], noAparelho).length, 0);
+  igual('aparelho vazio recebe tudo', filtrarBackupMaisNovo(doArquivo, []).length, 4);
+  igual('arquivo vazio nao quebra', filtrarBackupMaisNovo([], noAparelho).length, 0);
+  igual('a lapide mais nova do arquivo entra', filtrarBackupMaisNovo([{ id: 'a', atualizadoEm: 9000 }], noAparelho).length, 1);
+
+  // --- totais unicos
+  igual('gasto do mes = comprado + dividas', gastoTotalDoMes(120_000, { total: 30_000 }), 150_000);
+  igual('sem dividas e so o comprado', gastoTotalDoMes(120_000, { total: 0 }), 120_000);
+
+  const metas: Meta[] = [
+    { id: 'm1', descricao: 'Moto', valorAlvo: 1_000_000, guardado: 250_000, reservaMensal: 0, prazoEm: null, ordem: 0, atualizadoEm: 0, excluidoEm: null },
+    { id: 'm2', descricao: 'Viagem', valorAlvo: 500_000, guardado: 50_000, reservaMensal: 0, prazoEm: null, ordem: 1, atualizadoEm: 0, excluidoEm: null },
+    { id: 'm3', descricao: 'Apagada', valorAlvo: 9_999_999, guardado: 9_999_999, reservaMensal: 0, prazoEm: null, ordem: 2, atualizadoEm: 0, excluidoEm: 1 },
+  ];
+  const totais = totalDasMetas(metas);
+  igual('metas: guardado soma so as vivas', totais.guardado, 300_000);
+  igual('metas: alvo soma so as vivas', totais.alvo, 1_500_000);
+  igual('sem meta nenhuma, zero', totalDasMetas([]).alvo, 0);
+
+  const agora = T(2026, 11, 5);
+  const emprestimo = divida({ valorTotal: 1_200_000, parcelas: 24, primeiraEm: T(2026, 10, 10) });
+  const carteira = compromissos(dados({ dividas: [emprestimo] }), agora);
+  const restante = restanteDasDividas(carteira);
+  conferir('restante das dividas e positivo e nunca passa do total', restante > 0 && restante <= 1_200_000, String(restante));
+  igual(
+    'e o mesmo numero de somar a mao o "falta" de cada divida',
+    restante,
+    carteira.filter((c) => c.origem === 'divida').reduce((s, c) => s + c.falta.restante, 0),
+  );
+  const comCartao = compromissos(
+    dados({ dividas: [emprestimo], contas: [conta({ id: 'nu', tipo: 'credito' })], compras: [compra({ contaId: 'nu', total: 90_000, parcelas: 3, data: T(2026, 11, 2) })] }),
+    agora,
+  );
+  igual('cartao nao entra no restante das dividas', restanteDasDividas(comCartao), restante);
+
+  // --- datas montadas a mao, iguais em qualquer runtime
+  igual('data no formato dia/mes/ano', formatarData(T(2026, 11, 5)), '05/11/2026');
+  igual('dia e mes de um digito ganham zero', formatarData(T(2026, 1, 9)), '09/01/2026');
+  igual('mes por extenso', nomeMes('2026-11'), 'novembro de 2026');
+  igual('marco tem cedilha', nomeMes('2026-03'), 'março de 2026');
+  igual('chave de mes invalida nao quebra', nomeMes('lixo'), 'lixo');
 }
 
 console.log('');if (falhas > 0) {

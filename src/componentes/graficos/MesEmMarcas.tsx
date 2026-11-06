@@ -81,8 +81,16 @@ export function MesEmMarcas({
       </figcaption>
       <svg
         viewBox={`0 0 ${LARGURA} ${ALTURA}`}
-        role="img"
+        role="slider"
         tabIndex={0}
+        aria-valuemin={1}
+        aria-valuemax={total}
+        aria-valuenow={escolhido}
+        aria-valuetext={
+          escolhido > diaDeHoje
+            ? `Dia ${escolhido}: ainda não chegou`
+            : `${titulo}: ${valorDoEscolhido > 0 ? formatarReais(valorDoEscolhido) : 'nenhum gasto do dia a dia'}`
+        }
         aria-label={
           `Gasto do dia a dia em cada um dos ${total} dias do mês. ` +
           `O maior foi o dia ${diaDoMaior + 1}, com ${formatarReais(gastoDoMaior)}.` +

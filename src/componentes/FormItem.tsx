@@ -29,7 +29,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from './CampoDinheiro';
-import { SugestoesItem } from './SugestoesItem';
+import { ID_DA_LISTA, SugestoesItem, idDaSugestao } from './SugestoesItem';
 import { UNIDADES, UNIDADE_PADRAO } from '../../compartilhado/constantes';
 import {
   calcularPrecoUnitario,
@@ -203,6 +203,8 @@ export function FormItem({
           autoComplete="off"
           role="combobox"
           aria-expanded={focoNoNome && sugestoes.length > 0}
+          aria-controls={focoNoNome && sugestoes.length > 0 ? ID_DA_LISTA : undefined}
+          aria-activedescendant={destacado >= 0 ? idDaSugestao(destacado) : undefined}
           aria-autocomplete="list"
           placeholder="Nome do item"
           aria-label="Nome do item"

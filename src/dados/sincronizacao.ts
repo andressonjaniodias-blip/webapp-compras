@@ -93,23 +93,72 @@ function semCamposLocais<T extends { versao: number; pendente: 0 | 1 }>(registro
   return resto;
 }
 
-export async function sincronizar(): Promise<ResultadoSincronizacao> {
-  const cursor = await lerConfig<number>(CHAVE_CURSOR, 0);
+/** Quantos registros de cada tabela sobem por rodada. Um POST gigante estoura o tempo limite. */
+const TAMANHO_DO_LOTE = 500;
 
-  const pendentes = {} as Record<NomeTabela, RegistroLocal[]>;
+/**
+ * Teto de rodadas por chamada. Cada uma sobe um lote e baixa uma pagina; 20
+ * cobre 10 mil registros por tabela, bem acima de qualquer uso real, e impede
+ * um laco infinito se o servidor responder sempre "ha mais".
+ */
+const MAXIMO_DE_RODADAS = 20;
+
+interface RodadaFeita {
+  enviados: number;
+  recebidos: number;
+  cursor: number;
+  /** Sobrou coisa na fila local alem do lote desta rodada. */
+  maisParaSubir: boolean;
+  /** O servidor cortou a resposta no teto dele: ha mais para baixar. */
+  maisParaBaixar: boolean;
+}
+
+/**
+ * Sincroniza TUDO: repete rodadas ate subir a fila inteira e baixar tudo que ha.
+ *
+ * Antes era uma rodada so, e o servidor corta cada tabela em 2000 registros. Um
+ * aparelho novo, ou uma restauracao com muitos itens, ficava "meio sincronizado"
+ * ate a proxima abertura do app, sem aviso nenhum. O cursor so avanca ate onde
+ * TODAS as tabelas estao completas (ver `calcularCursor`), entao repetir e seguro.
+ */
+export async function sincronizar(): Promise<ResultadoSincronizacao> {
   let enviados = 0;
+  let recebidos = 0;
+  let cursor = await lerConfig<number>(CHAVE_CURSOR, 0);
+
+  for (let rodada = 0; rodada < MAXIMO_DE_RODADAS; rodada += 1) {
+    const feita = await umaRodada(cursor);
+    enviados += feita.enviados;
+    recebidos += feita.recebidos;
+    cursor = feita.cursor;
+    if (!feita.maisParaSubir && !feita.maisParaBaixar) break;
+  }
+
+  await gravarConfig(CHAVE_ULTIMA, Date.now());
+
+  // Itens vindos de outro aparelho tambem precisam entrar nas sugestoes deste.
+  // Como o catalogo e derivado, refazer inteiro e mais confiavel que aplicar
+  // delta — e e barato o bastante para nao valer a complexidade do incremental.
+  if (recebidos > 0) await reconstruirCatalogo();
+
+  return { enviados, recebidos, cursor };
+}
+
+async function umaRodada(cursor: number): Promise<RodadaFeita> {
+  const lotes = {} as Record<NomeTabela, RegistroLocal[]>;
+  let enviados = 0;
+  let maisParaSubir = false;
 
   for (const nome of TABELAS) {
     const lista = await tabela(nome).where('pendente').equals(1).toArray();
-    pendentes[nome] = lista;
-    enviados += lista.length;
+    if (lista.length > TAMANHO_DO_LOTE) maisParaSubir = true;
+    lotes[nome] = lista.slice(0, TAMANHO_DO_LOTE);
+    enviados += lotes[nome].length;
   }
 
   const envio = {
     cursor,
-    ...Object.fromEntries(
-      TABELAS.map((nome) => [nome, pendentes[nome].map(semCamposLocais)]),
-    ),
+    ...Object.fromEntries(TABELAS.map((nome) => [nome, lotes[nome].map(semCamposLocais)])),
   } as unknown as EnvioSincronizacao;
 
   const resposta = await chamarApi<RespostaSincronizacao>('/sync', {
@@ -118,16 +167,30 @@ export async function sincronizar(): Promise<ResultadoSincronizacao> {
   });
 
   const recebidos = await aplicarResposta(resposta);
-
+  await soltarDescartados(resposta);
   await gravarConfig(CHAVE_CURSOR, resposta.cursor);
-  await gravarConfig(CHAVE_ULTIMA, Date.now());
 
-  // Itens vindos de outro aparelho tambem precisam entrar nas sugestoes deste.
-  // Como o catalogo e derivado, refazer inteiro e mais confiavel que aplicar
-  // delta — e e barato o bastante para nao valer a complexidade do incremental.
-  if (recebidos > 0) await reconstruirCatalogo();
+  return {
+    enviados,
+    recebidos,
+    cursor: resposta.cursor,
+    maisParaSubir,
+    maisParaBaixar: resposta.maisParaBaixar === true,
+  };
+}
 
-  return { enviados, recebidos, cursor: resposta.cursor };
+/**
+ * Tira da fila o que o servidor recusou por invalido. Sem isto o registro ruim
+ * ficava `pendente` e subia de novo a cada rodada, para sempre — o dado continua
+ * guardado no aparelho, so deixa de travar a fila.
+ */
+async function soltarDescartados(resposta: RespostaSincronizacao): Promise<void> {
+  for (const { tabela: nome, id } of resposta.descartados ?? []) {
+    if (!(TABELAS as readonly string[]).includes(nome)) continue;
+    const alvo = tabela(nome as NomeTabela);
+    const local = await alvo.get(id);
+    if (local && local.pendente === 1) await alvo.put({ ...local, pendente: 0 });
+  }
 }
 
 /**

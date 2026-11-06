@@ -66,7 +66,7 @@ export function ColunasMensais({
 
       <svg
         viewBox={`0 0 ${LARGURA} ${ALTURA}`}
-        role="img"
+        role="group"
         aria-label={
           `Gasto dos últimos ${serie.length} meses, em fixo, variável e eventual.` +
           (tipico !== null ? ` O mês típico é ${formatarReais(tipico)}.` : '')

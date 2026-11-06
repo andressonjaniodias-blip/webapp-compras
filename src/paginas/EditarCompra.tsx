@@ -15,6 +15,7 @@
  * mais entra aqui, nunca.
  */
 
+import { Carregando } from '../componentes/Carregando';
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -41,7 +42,10 @@ import {
   listarCompras,
   listarItens,
   removerItem,
+  restaurarItem,
 } from '../dados/compras';
+import { useConfirmar } from '../componentes/Confirmar';
+import { useDesfazer } from '../componentes/Desfazer';
 import { categoriasPorItem } from '../dados/catalogo';
 import { lerModoCategorizacao, listarRegras } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
@@ -61,6 +65,8 @@ export function EditarCompra() {
   // dispara junto com o voltar e leva para o painel.
   const saindo = useRef(false);
   const { atualizarPendentes } = useApp();
+  const confirmar = useConfirmar();
+  const oferecerDesfazer = useDesfazer();
   const financeiro = useFinanceiro();
 
   // `undefined` = carregando; `null` = nao existe (foi excluida).
@@ -138,8 +144,8 @@ export function EditarCompra() {
 
   if (compra === undefined) {
     return (
-      <div className="app">
-        <p className="carregando">Carregando…</p>
+      <div className="app" role="main">
+        <Carregando />
       </div>
     );
   }
@@ -170,9 +176,11 @@ export function EditarCompra() {
   }
 
   async function apagarCompra() {
-    const certeza = window.confirm(
-      'Excluir esta compra e todos os itens dela? Isso some também dos outros aparelhos.',
-    );
+    const certeza = await confirmar({
+      texto: 'Excluir esta compra e todos os itens dela? Isso some também dos outros aparelhos.',
+      rotulo: 'Excluir',
+      perigo: true,
+    });
     if (!certeza) return;
     saindo.current = true;
     await excluirCompra(id);
@@ -181,7 +189,7 @@ export function EditarCompra() {
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
@@ -358,6 +366,10 @@ export function EditarCompra() {
             onRemover={async () => {
               await removerItem(item.id);
               await atualizarPendentes();
+              oferecerDesfazer(`${item.nome || 'Item'} removido.`, async () => {
+                await restaurarItem(item.id);
+                await atualizarPendentes();
+              });
             }}
           />
         ))}

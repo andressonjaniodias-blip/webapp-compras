@@ -15,21 +15,17 @@
  * envelope. O envelope ("cabe na renda?") so aparece com entrada lancada.
  */
 
+import { Carregando } from '../componentes/Carregando';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
-import { NavegadorDeMes } from '../componentes/NavegadorDeMes';
 import { BarraDeProgresso } from '../componentes/graficos/BarraDeProgresso';
-import { SeloDeEstado } from '../componentes/graficos/Estado';
 import { CATEGORIAS } from '../../compartilhado/constantes';
 import { limitesDo } from '../../compartilhado/planos';
 import {
   MESES_MINIMOS,
   atualizarProposta,
   avisoDeAtualizacao,
-  executar,
-  executarMes,
-  folgaDoOrcamento,
   mediaMensal,
   mesesDeUso,
   orcamentoLiberado,
@@ -47,21 +43,22 @@ import {
   listarOrcamentos,
 } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
+import { useConfirmar } from '../componentes/Confirmar';
+import { Acompanhamento } from '../componentes/orcamento/Acompanhamento';
+import { Envelope } from '../componentes/orcamento/Envelope';
+import { useDesfazer } from '../componentes/Desfazer';
 import { useApp } from '../estado';
-import { formatarDataHora, mesAtual, nomeMes } from '../lib/datas';
+import { formatarDataHora, mesAtual } from '../lib/datas';
 import { formatarReais } from '../lib/dinheiro';
 import { useVoltar } from '../lib/useVoltar';
-
-/** "2026-11" -> "novembro". O ano so atrapalha num rotulo de uma linha. */
-function apenasMes(chave: string): string {
-  return nomeMes(chave).replace(/ de \d{4}$/, '');
-}
 
 export function Orcamento() {
   const voltar = useVoltar('/carteira');
   const { atualizarPendentes, iaLigada, modeloIa, offline, plano } = useApp();
   const financeiro = useFinanceiro();
   const orcamentos = useLiveQuery(listarOrcamentos, [], undefined);
+  const perguntar = useConfirmar();
+  const oferecerDesfazer = useDesfazer();
 
   const agora = Date.now();
   const anoAtual = new Date(agora).getFullYear();
@@ -75,8 +72,8 @@ export function Orcamento() {
 
   if (orcamentos === undefined || financeiro.carregando) {
     return (
-      <div className="app">
-        <p className="carregando">Carregando…</p>
+      <div className="app" role="main">
+        <Carregando />
       </div>
     );
   }
@@ -125,7 +122,11 @@ export function Orcamento() {
   }
 
   async function gerarDeNovo() {
-    if (!window.confirm('Gerar a proposta de novo? Os tetos que você ajustou serão trocados.')) return;
+    const certeza = await perguntar({
+      texto: 'Gerar a proposta de novo? Os tetos que você ajustou serão trocados.',
+      rotulo: 'Gerar de novo',
+    });
+    if (!certeza) return;
     await gerar();
   }
 
@@ -143,7 +144,16 @@ export function Orcamento() {
   }
 
   function removerLinha(categoria: string) {
+    const removida = orc?.linhas.find((l) => l.categoria === categoria);
     void alterar((o) => ({ linhas: o.linhas.filter((l) => l.categoria !== categoria) }));
+    // Tirar um teto nao pergunta: avisa e deixa desfazer. A linha volta como era
+    // (teto, proposta e original), no fim da lista.
+    if (!removida) return;
+    oferecerDesfazer(`Teto de ${categoria} removido.`, () =>
+      alterar((o) =>
+        o.linhas.some((l) => l.categoria === categoria) ? {} : { linhas: [...o.linhas, removida] },
+      ),
+    );
   }
 
   function incluirLinha(linha: LinhaOrcamento) {
@@ -165,13 +175,11 @@ export function Orcamento() {
 
   async function confirmar() {
     if (!orc) return;
-    if (
-      !window.confirm(
-        `Confirmar o orçamento de ${ano}? Os tetos passam a ser acompanhados mês a mês. Você ainda pode ajustar depois.`,
-      )
-    ) {
-      return;
-    }
+    const certeza = await perguntar({
+      texto: `Confirmar o orçamento de ${ano}? Os tetos passam a ser acompanhados mês a mês. Você ainda pode ajustar depois.`,
+      rotulo: 'Confirmar orçamento',
+    });
+    if (!certeza) return;
     await confirmarOrcamento(orc.id);
     await atualizarPendentes();
     setAjustando(false);
@@ -179,7 +187,11 @@ export function Orcamento() {
 
   async function voltarARascunho() {
     if (!orc) return;
-    if (!window.confirm('Voltar este orçamento a rascunho? O acompanhamento é pausado.')) return;
+    const certeza = await perguntar({
+      texto: 'Voltar este orçamento a rascunho? O acompanhamento é pausado.',
+      rotulo: 'Voltar a rascunho',
+    });
+    if (!certeza) return;
     await alterar((o) => ({
       situacao: 'rascunho',
       confirmadoEm: 0,
@@ -189,7 +201,12 @@ export function Orcamento() {
 
   async function excluir() {
     if (!orc) return;
-    if (!window.confirm(`Excluir o orçamento de ${ano}?`)) return;
+    const certeza = await perguntar({
+      texto: `Excluir o orçamento de ${ano}?`,
+      rotulo: 'Excluir',
+      perigo: true,
+    });
+    if (!certeza) return;
     await excluirOrcamento(orc.id);
     await atualizarPendentes();
   }
@@ -229,7 +246,7 @@ export function Orcamento() {
   const livres = CATEGORIAS.filter((c) => !orc?.linhas.some((l) => l.categoria === c));
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
@@ -239,13 +256,12 @@ export function Orcamento() {
         </div>
       </header>
 
-      <div className="acoes" style={{ marginTop: 0, flexDirection: 'row' }}>
+      <div className="acoes-linha" role="group" aria-label="Ano do orçamento">
         {[anoAtual, anoAtual + 1].map((a) => (
           <button
             key={a}
             type="button"
             className={'botao' + (a === ano ? ' botao-primario' : '')}
-            style={{ flex: 1 }}
             aria-pressed={a === ano}
             onClick={() => {
               setAno(a);
@@ -261,7 +277,7 @@ export function Orcamento() {
 
       {/* Passo 0: sem base, sem numero. */}
       {!orc && !liberado && (
-        <section className="cartao" style={{ marginTop: 12 }}>
+        <section className="cartao topo-12">
           <strong>O orçamento abre depois de {MESES_MINIMOS} meses de uso</strong>
           <p className="dica">
             Um teto por categoria só faz sentido com histórico: o app precisa de pelo menos{' '}
@@ -279,7 +295,7 @@ export function Orcamento() {
 
       {/* Passo 1: liberado, mas ainda nao ha orcamento deste ano. */}
       {!orc && liberado && (
-        <section className="cartao" style={{ marginTop: 12 }}>
+        <section className="cartao topo-12">
           <strong>Orçamento de {ano}</strong>
           <p className="dica">
             O app propõe um teto anual para cada categoria a partir do que você gastou. Depois você
@@ -292,12 +308,12 @@ export function Orcamento() {
         </section>
       )}
 
-      {erro && <p className="aviso aviso-erro" style={{ marginTop: 12 }}>{erro}</p>}
+      {erro && <p className="aviso aviso-erro topo-12" role="alert">{erro}</p>}
 
       {orc && (
         <>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
-            <h2 className="secao-titulo" style={{ margin: 0 }}>Orçamento de {ano}</h2>
+          <div className="linha-entre topo-12" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
+            <h2 className="secao-titulo sem-topo">Ano de {ano}</h2>
             <span className={'selo' + (rascunho ? ' selo-pendente' : '')}>
               {rascunho ? 'rascunho' : 'confirmado'}
             </span>
@@ -307,8 +323,8 @@ export function Orcamento() {
           )}
 
           {aviso !== null && (
-            <div className="aviso aviso-atencao" style={{ marginTop: 12 }}>
-              <p style={{ margin: 0 }}>
+            <div className="aviso aviso-atencao topo-12" role="status">
+              <p className="sem-topo">
                 Você já tem {aviso} meses de uso. Quer atualizar o orçamento com esse histórico? Os
                 tetos só mudam se você aplicar.
               </p>
@@ -350,15 +366,12 @@ export function Orcamento() {
             <>
               {somaPorMacro(orc.linhas).map((bloco) => (
               <section key={bloco.macro}>
-              <h3
-                className="secao-titulo"
-                style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}
-              >
-                <span>{bloco.macro}</span>
-                <span>
+              <div className="linha-entre">
+                <h3 className="secao-subtitulo">{bloco.macro}</h3>
+                <span className="dica">
                   {formatarReais(bloco.teto)}/ano · {formatarReais(mediaMensal(bloco.teto))}/mês
                 </span>
-              </h3>
+              </div>
               <ul className="lista">
                 {bloco.linhas.map((linha) => {
                   const diferente = linha.proposto !== linha.valorAnual;
@@ -383,6 +396,7 @@ export function Orcamento() {
                           <button
                             type="button"
                             className="botao"
+                            aria-label={`${rascunho ? 'Usar' : 'Aplicar'} a proposta de ${linha.categoria}`}
                             onClick={() => mudarLinha(linha.categoria, { valorAnual: linha.proposto })}
                           >
                             {rascunho ? 'Usar' : 'Aplicar'}
@@ -392,6 +406,7 @@ export function Orcamento() {
                       <button
                         type="button"
                         className="botao botao-perigo"
+                        aria-label={`Remover o teto de ${linha.categoria}`}
                         onClick={() => removerLinha(linha.categoria)}
                       >
                         Remover
@@ -406,11 +421,16 @@ export function Orcamento() {
               {novas.length > 0 && (
                 <div className="cartao">
                   <strong>Categorias que a proposta tem e o orçamento não</strong>
-                  <ul style={{ margin: '8px 0 0', paddingLeft: 0, listStyle: 'none' }}>
+                  <ul className="lista-limpa topo-12">
                     {novas.map((n) => (
-                      <li key={n.categoria} style={{ marginBottom: 6 }}>
+                      <li key={n.categoria}>
                         {n.categoria} · {formatarReais(n.valorAnual)}{' '}
-                        <button type="button" className="botao" onClick={() => incluirLinha(n)}>
+                        <button
+                          type="button"
+                          className="botao"
+                          aria-label={`Incluir ${n.categoria} no orçamento`}
+                          onClick={() => incluirLinha(n)}
+                        >
                           Incluir
                         </button>
                       </li>
@@ -486,7 +506,7 @@ export function Orcamento() {
             </>
           )}
           {orc.parecer && (
-            <div style={{ marginTop: 12 }}>
+            <div className="topo-12">
               <p className="dica">Parecer de {formatarDataHora(orc.parecer.geradoEm)}.</p>
               <div className="cartao">{orc.parecer.resumo}</div>
               {orc.parecer.sugestoes.map((s) => {
@@ -494,7 +514,7 @@ export function Orcamento() {
                 return (
                   <div className="cartao" key={s.categoria}>
                     <strong>{s.categoria}</strong>
-                    <p className="dica" style={{ color: 'var(--texto)' }}>{s.motivo}</p>
+                    <p className="texto">{s.motivo}</p>
                     {s.valorAnualCentavos !== null && atual && (
                       <p className="dica">
                         Teto sugerido: {formatarReais(s.valorAnualCentavos)} (hoje{' '}
@@ -502,6 +522,7 @@ export function Orcamento() {
                         <button
                           type="button"
                           className="botao"
+                          aria-label={`Aplicar o teto sugerido para ${s.categoria}`}
                           onClick={() => void aplicarSugestao(s.categoria, s.valorAnualCentavos!)}
                         >
                           Aplicar
@@ -534,326 +555,18 @@ export function Orcamento() {
                 Voltar a rascunho
               </button>
             )}
+          </div>
+
+          {/* Fora do rodape fixo: "Excluir" ao lado de "Confirmar" era o botao
+              errado no lugar mais facil de tocar, e com tres botoes o texto
+              quebrava em celular estreito. */}
+          <div className="acoes">
             <button type="button" className="botao botao-perigo" onClick={() => void excluir()}>
-              Excluir
+              Excluir o orçamento de {ano}
             </button>
           </div>
         </>
       )}
     </div>
-  );
-}
-
-/**
- * O acompanhamento: DUAS visoes do mesmo teto, separadas.
- *
- *   Mes  -> o limite deste mes (a media do teto, ajustada pelo que ja foi gasto) contra o gasto do mes
- *   Ano  -> o teto do ano contra o gasto do ano
- *
- * Cada visao agrupa em macrocategorias, que so organizam a exibicao: o teto
- * continua sendo de cada subcategoria. Todo numero vem de `executarMes` e
- * `executar`; aqui so se desenha.
- */
-function Acompanhamento({
-  orc,
-  mes,
-  mesesDoAno,
-  onMes,
-  compras,
-  agora,
-  visao,
-  onVisao,
-}: {
-  orc: { ano: number; linhas: LinhaOrcamento[] };
-  mes: string;
-  mesesDoAno: string[];
-  onMes: (mes: string) => void;
-  compras: Parameters<typeof executar>[0];
-  agora: number;
-  visao: 'mes' | 'ano';
-  onVisao: (visao: 'mes' | 'ano') => void;
-}) {
-  return (
-    <>
-      <h2 className="secao-titulo">Acompanhamento</h2>
-      <div className="acoes" style={{ marginTop: 0, flexDirection: 'row' }}>
-        {(['mes', 'ano'] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            className={'botao' + (v === visao ? ' botao-primario' : '')}
-            style={{ flex: 1 }}
-            aria-pressed={v === visao}
-            onClick={() => onVisao(v)}
-          >
-            {v === 'mes' ? 'Mês' : 'Ano'}
-          </button>
-        ))}
-      </div>
-
-      {visao === 'mes' ? (
-        <VisaoMensal
-          orc={orc}
-          mes={mes}
-          mesesDoAno={mesesDoAno}
-          onMes={onMes}
-          compras={compras}
-          agora={agora}
-        />
-      ) : (
-        <VisaoAnual orc={orc} mes={mes} compras={compras} agora={agora} />
-      )}
-    </>
-  );
-}
-
-/** "+R$ 45,45" / "−R$ 12,00": quanto o gasto dos meses anteriores mexeu no limite. */
-function textoDoAjuste(ajuste: number): string | null {
-  if (ajuste === 0) return null;
-  return ajuste > 0
-    ? `sobe ${formatarReais(ajuste)} por você ter gasto menos antes`
-    : `desce ${formatarReais(-ajuste)} por você ter gasto mais antes`;
-}
-
-function VisaoMensal({
-  orc,
-  mes,
-  mesesDoAno,
-  onMes,
-  compras,
-  agora,
-}: {
-  orc: { ano: number; linhas: LinhaOrcamento[] };
-  mes: string;
-  mesesDoAno: string[];
-  onMes: (mes: string) => void;
-  compras: Parameters<typeof executar>[0];
-  agora: number;
-}) {
-  const exec = executarMes(compras, orc, mes, agora);
-
-  return (
-    <>
-      <NavegadorDeMes meses={mesesDoAno} mes={mes} onChange={onMes} />
-
-      <section className="cartao">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <span className="dica">gasto em {apenasMes(mes)}</span>
-          <SeloDeEstado estado={exec.estado} />
-        </div>
-        <div className="total-grande">{formatarReais(exec.gasto)}</div>
-        <BarraDeProgresso
-          progresso={exec.limite > 0 ? exec.gasto / exec.limite : exec.gasto > 0 ? 1 : 0}
-          rotulo={`${formatarReais(exec.gasto)} gastos de um limite de ${formatarReais(exec.limite)} em ${apenasMes(mes)}`}
-        />
-        <p className="dica">
-          de {formatarReais(exec.limite)} de limite do mês ·{' '}
-          {exec.estourou > 0
-            ? `passou ${formatarReais(exec.estourou)}`
-            : `restam ${formatarReais(exec.restante)}`}
-        </p>
-        <p className="dica">
-          O limite do mês é a média do teto anual, ajustada pelo que você já gastou no ano.
-        </p>
-      </section>
-
-      {exec.macros.map((bloco) => (
-        <section key={bloco.macro}>
-          <h3
-            className="secao-titulo"
-            style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}
-          >
-            <span>{bloco.macro}</span>
-            <SeloDeEstado estado={bloco.estado} />
-          </h3>
-          <p className="dica" style={{ marginTop: 0 }}>
-            {formatarReais(bloco.gasto)} de {formatarReais(bloco.limite)}
-          </p>
-          <ul className="lista">
-            {bloco.linhas.map((l) => {
-              const ajuste = textoDoAjuste(l.ajuste);
-              return (
-                <li key={l.categoria} className="cartao">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <strong>{l.categoria}</strong>
-                    <SeloDeEstado estado={l.estado} />
-                  </div>
-                  <p className="dica" style={{ margin: '4px 0' }}>
-                    {formatarReais(l.gastoNoMes)} de {formatarReais(l.limiteDoMes)}
-                  </p>
-                  <BarraDeProgresso
-                    progresso={
-                      l.limiteDoMes > 0 ? l.gastoNoMes / l.limiteDoMes : l.gastoNoMes > 0 ? 1 : 0
-                    }
-                    rotulo={`${l.categoria}: ${formatarReais(l.gastoNoMes)} de ${formatarReais(l.limiteDoMes)}`}
-                  />
-                  <p className="dica">
-                    {l.estourou > 0
-                      ? `passou ${formatarReais(l.estourou)} do limite · `
-                      : `restam ${formatarReais(l.restanteDoMes)} · `}
-                    média de {formatarReais(l.media)}
-                    {ajuste && ` · o limite ${ajuste}`}
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
-
-      {exec.fora.length > 0 && (
-        <div className="cartao">
-          <strong>Fora do orçamento</strong>
-          <p className="dica">Categorias com gasto em {apenasMes(mes)} e sem teto.</p>
-          <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
-            {exec.fora.map((f) => (
-              <li key={f.categoria}>
-                {f.categoria} · {formatarReais(f.gastoNoMes)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
-  );
-}
-
-function VisaoAnual({
-  orc,
-  mes,
-  compras,
-  agora,
-}: {
-  orc: { ano: number; linhas: LinhaOrcamento[] };
-  mes: string;
-  compras: Parameters<typeof executar>[0];
-  agora: number;
-}) {
-  const exec = executar(compras, orc, mes, agora);
-  const progressoGeral = exec.totalDosTetos > 0 ? exec.gastoNoAno / exec.totalDosTetos : 0;
-
-  return (
-    <>
-      <section className="cartao" style={{ marginTop: 12 }}>
-        <span className="dica">gasto no ano, nas categorias com teto</span>
-        <div className="total-grande">{formatarReais(exec.gastoNoAno)}</div>
-        <BarraDeProgresso
-          progresso={progressoGeral}
-          rotulo={`${formatarReais(exec.gastoNoAno)} gastos de ${formatarReais(exec.totalDosTetos)} em tetos`}
-        />
-        <p className="dica">
-          de {formatarReais(exec.totalDosTetos)} em tetos · ainda cabem {formatarReais(exec.restante)}
-          {exec.mesesQueFaltam > 0 &&
-            ` em ${exec.mesesQueFaltam} ${exec.mesesQueFaltam === 1 ? 'mês' : 'meses'}`}
-        </p>
-      </section>
-
-      {exec.macros.map((bloco) => (
-        <section key={bloco.macro}>
-          <h3
-            className="secao-titulo"
-            style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}
-          >
-            <span>{bloco.macro}</span>
-            <SeloDeEstado estado={bloco.estado} />
-          </h3>
-          <p className="dica" style={{ marginTop: 0 }}>
-            {formatarReais(bloco.gastoNoAno)} de {formatarReais(bloco.teto)} no ano
-          </p>
-          <ul className="lista">
-            {bloco.linhas.map((l) => (
-              <li key={l.categoria} className="cartao">
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <strong>{l.categoria}</strong>
-                  <SeloDeEstado estado={l.estado} />
-                </div>
-                <p className="dica" style={{ margin: '4px 0' }}>
-                  {formatarReais(l.gastoNoAno)} de {formatarReais(l.teto)}
-                  {l.ajustadoDe !== null && ` · ajustado de ${formatarReais(l.ajustadoDe)}`}
-                </p>
-                <BarraDeProgresso
-                  progresso={l.teto > 0 ? l.gastoNoAno / l.teto : l.gastoNoAno > 0 ? 1 : 0}
-                  rotulo={`${l.categoria}: ${formatarReais(l.gastoNoAno)} de ${formatarReais(l.teto)}`}
-                />
-                <p className="dica">
-                  {l.estado === 'estoura'
-                    ? `passou ${formatarReais(l.estourou)} do teto`
-                    : `restam ${formatarReais(l.restante)} no ano`}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-
-      {exec.fora.length > 0 && (
-        <div className="cartao">
-          <strong>Fora do orçamento</strong>
-          <p className="dica">Categorias com gasto no ano e sem teto.</p>
-          <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
-            {exec.fora.map((f) => (
-              <li key={f.categoria}>
-                {f.categoria} · {formatarReais(f.gastoNoAno)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
-  );
-}
-
-/** Cabe na renda? Some sem entrada lancada: o numero diria "nao cabe" por falta de dado. */
-function Envelope({
-  dados,
-  orc,
-  agora,
-  entradaManual,
-}: {
-  dados: Parameters<typeof folgaDoOrcamento>[0];
-  orc: { ano: number; linhas: LinhaOrcamento[] };
-  agora: number;
-  entradaManual: number | null;
-}) {
-  const folga = folgaDoOrcamento(dados, orc, agora, entradaManual);
-  if (folga === null) return null;
-
-  return (
-    <>
-      <h2 className="secao-titulo">Cabe na renda?</h2>
-      <section className="cartao">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <span>Entradas estimadas</span>
-          <strong>{formatarReais(folga.entradas)}</strong>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <span>− Tetos que ainda cabem</span>
-          <strong>{formatarReais(folga.tetos)}</strong>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <span>− Parcelas de empréstimo</span>
-          <strong>{formatarReais(folga.dividas)}</strong>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <span>− Reserva das metas</span>
-          <strong>{formatarReais(folga.metas)}</strong>
-        </div>
-        <hr />
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-          <SeloDeEstado estado={folga.folga < 0 ? 'estoura' : 'cabe'} />
-          <strong className={folga.folga < 0 ? 'valor-ruim' : 'valor-bom'}>
-            {formatarReais(folga.folga)}
-          </strong>
-        </div>
-        <p className="dica">
-          {folga.folga < 0
-            ? 'A soma dos tetos, das parcelas e das metas passa do que deve entrar.'
-            : 'Sobra depois dos tetos, das parcelas e das metas.'}{' '}
-          É estimativa: a entrada é a média dos últimos meses
-          {folga.entradaFraca && ' (poucos meses, então é fraca)'}. Parcelas de cartão ficam de
-          fora: a compra no crédito já pesa no teto, na data da compra.
-        </p>
-      </section>
-    </>
   );
 }

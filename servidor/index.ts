@@ -16,6 +16,8 @@ import { carregarAmbiente } from './ambiente';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { secureHeaders } from 'hono/secure-headers';
 import type { EnvioSincronizacao } from '../compartilhado/tipos';
 import { limitesDo, planoValido, type Plano } from '../compartilhado/planos';
 import { banco, comandosDoEsquema, ehBancoLocal, ehEsquemaDesatualizado } from './banco';
@@ -36,11 +38,44 @@ import {
   modoAberto,
   temSessao,
 } from './sessao';
+import {
+  consumirCotaDeIa,
+  esperaDoLogin,
+  limiteDiarioDaIa,
+  limparFalhasDeLogin,
+  origemDaRequisicao,
+  registrarFalhaDeLogin,
+} from './limites';
 import { sincronizar } from './sincronizacao';
 
 carregarAmbiente();
 
 const app = new Hono();
+
+/**
+ * Cabecalhos de seguranca (nosniff, HSTS, frame, referrer...), SEM CSP: o
+ * `index.html` tem um script inline que aplica o tema antes do primeiro quadro, e
+ * uma CSP que o proibisse faria a tela piscar no tema errado.
+ */
+app.use('*', secureHeaders());
+
+/**
+ * Teto de tamanho do corpo, em JSON como o resto da API (invariante 8). Sem ele,
+ * qualquer um mandava centenas de MB para uma rota que le o corpo ANTES de
+ * conferir a senha, e o servidor gratuito (512 MB) cairia. So a sincronizacao
+ * carrega lote de verdade, e ela pode ser grande: uma restauracao de backup.
+ */
+const corpoPequeno = bodyLimit({
+  maxSize: 64 * 1024,
+  onError: (c) => c.json({ erro: 'Corpo grande demais.' }, 413),
+});
+const corpoDoSync = bodyLimit({
+  maxSize: 10 * 1024 * 1024,
+  onError: (c) => c.json({ erro: 'Lote grande demais.' }, 413),
+});
+app.use('/api/*', (c, proximo) =>
+  c.req.path === '/api/sync' ? corpoDoSync(c, proximo) : corpoPequeno(c, proximo),
+);
 
 /**
  * O plano do usuario.
@@ -76,16 +111,31 @@ app.post('/api/sessao', async (c) => {
     return c.json(estadoDaSessao(true));
   }
 
-  const corpo = await c.req.json<{ senha?: string }>().catch(() => ({ senha: '' }));
-  const guardado = process.env.SENHA_HASH?.trim() ?? '';
+  // O freio vem ANTES de calcular o hash: errar a senha muitas vezes nao pode
+  // custar CPU ao servidor nem deixar adivinhar em paralelo.
+  const origem = origemDaRequisicao(c);
+  const espera = esperaDoLogin(origem);
+  if (espera > 0) {
+    c.header('Retry-After', String(espera));
+    return c.json(
+      { erro: `Muitas tentativas. Tente de novo em ${Math.ceil(espera / 60)} min.` },
+      429,
+    );
+  }
 
-  if (!corpo.senha || !conferirSenha(corpo.senha, guardado)) {
-    // Atraso curto e fixo. Nao e defesa forte, mas torna tentativa por forca
-    // bruta desagradavel sem precisar guardar estado de tentativas.
+  const corpo = await c.req.json<{ senha?: unknown }>().catch(() => ({ senha: '' }));
+  const guardado = process.env.SENHA_HASH?.trim() ?? '';
+  const senha = typeof corpo.senha === 'string' ? corpo.senha : '';
+
+  if (!senha || !(await conferirSenha(senha, guardado))) {
+    registrarFalhaDeLogin(origem);
+    // Atraso curto e fixo, alem do freio acima: o freio limita quantas vezes,
+    // o atraso torna cada tentativa desagradavel.
     await new Promise((pronto) => setTimeout(pronto, 400));
     return c.json({ erro: 'Senha incorreta.' }, 401);
   }
 
+  limparFalhasDeLogin(origem);
   abrirSessao(c);
   return c.json(estadoDaSessao(true));
 });
@@ -96,7 +146,8 @@ app.delete('/api/sessao', (c) => {
 });
 
 app.post('/api/sync', exigirSessao, async (c) => {
-  const envio = await c.req.json<EnvioSincronizacao>();
+  const envio = await c.req.json<EnvioSincronizacao>().catch(() => null);
+  if (!envio || typeof envio !== 'object') return c.json({ erro: 'Corpo inválido.' }, 400);
   const resposta = await sincronizar(envio);
   return c.json(resposta);
 });
@@ -110,18 +161,33 @@ app.post('/api/sync', exigirSessao, async (c) => {
  * "existe, mas exige pagamento".
  */
 function exigirPlanoPago(c: Context) {
-  if (limitesDo(planoAtual()).ia) return null;
-  return c.json(
-    { erro: 'As análises de IA fazem parte do plano pago.', plano: planoAtual() },
-    402,
-  );
+  if (!limitesDo(planoAtual()).ia) {
+    return c.json(
+      { erro: 'As análises de IA fazem parte do plano pago.', plano: planoAtual() },
+      402,
+    );
+  }
+
+  // Alem do plano, um teto de chamadas por dia: cookie vazado ou um laco no
+  // cliente nao pode virar uma conta aberta. 429 e o codigo certo: "voce pode,
+  // mas ja usou o que cabe hoje".
+  if (iaLigada() && !consumirCotaDeIa()) {
+    return c.json(
+      {
+        erro: `O limite de ${limiteDiarioDaIa()} análises por dia foi atingido. Volte amanhã.`,
+      },
+      429,
+    );
+  }
+  return null;
 }
 
 app.post('/api/dicas', exigirSessao, async (c) => {
   const barrado = exigirPlanoPago(c);
   if (barrado) return barrado;
 
-  const { mes } = await c.req.json<{ mes?: string }>();
+  const corpo = await c.req.json<{ mes?: string }>().catch(() => null);
+  const mes = corpo?.mes;
   if (!mes) return c.json({ erro: 'Informe o mês.' }, 400);
 
   try {

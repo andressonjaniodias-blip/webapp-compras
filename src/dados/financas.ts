@@ -37,7 +37,6 @@ import {
   type Divida,
   type Meta,
   type Orcamento,
-  type RegraCategoria,
   type Renda,
   type Transferencia,
 } from '../../compartilhado/tipos';
@@ -49,11 +48,6 @@ const novo = { excluidoEm: null, versao: 0 } as const;
 export async function listarContas(): Promise<ContaLocal[]> {
   const todas = await banco.contas.toArray();
   return todas.filter(naoExcluido).sort((a, b) => a.ordem - b.ordem);
-}
-
-export async function buscarConta(id: string): Promise<ContaLocal | undefined> {
-  const conta = await banco.contas.get(id);
-  return conta && naoExcluido(conta) ? conta : undefined;
 }
 
 export async function criarConta(parcial: Partial<Conta> = {}): Promise<string> {
@@ -304,13 +298,6 @@ export async function registrarTransferencia(
   return transferencia.id;
 }
 
-export async function atualizarTransferencia(
-  id: string,
-  mudancas: Partial<Omit<Transferencia, 'id'>>,
-): Promise<void> {
-  await banco.transferencias.update(id, { ...mudancas, ...carimbo() });
-}
-
 export async function excluirTransferencia(id: string): Promise<void> {
   await banco.transferencias.update(id, { excluidoEm: Date.now(), ...carimbo() });
 }
@@ -347,15 +334,13 @@ export async function criarRegra(termo: string, categoria: string): Promise<stri
   return regra.id;
 }
 
-export async function atualizarRegra(
-  id: string,
-  mudancas: Partial<Omit<RegraCategoria, 'id'>>,
-): Promise<void> {
-  await banco.regras.update(id, { ...mudancas, ...carimbo() });
-}
-
 export async function excluirRegra(id: string): Promise<void> {
   await banco.regras.update(id, { excluidoEm: Date.now(), ...carimbo() });
+}
+
+/** Tira a lapide da regra: o "Desfazer" de `excluirRegra`. */
+export async function restaurarRegra(id: string): Promise<void> {
+  await banco.regras.update(id, { excluidoEm: null, ...carimbo() });
 }
 
 // --------------------------------------------------------------- orcamento

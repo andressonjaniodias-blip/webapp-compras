@@ -21,13 +21,16 @@ expira em 30 dias — nunca use ele). Sem ESLint/Prettier.
 npm run dev          # Vite + API juntos
 npm run build        # typecheck dos dois lados + build do app e do servidor
 npm run teste:sync   # sincronização, contra Postgres em memória
-npm run teste:contas # centavos, ciclo, contagem dupla, previsão, categorização
+npm run teste:contas # centavos, ciclo, contagem dupla, previsão, categorização, orçamento
+npm run teste:servidor # senha, cookie, freio de login, teto de IA, validação do lote
 npm start            # o que o Render executa
 npm run segredo      # gera o SESSAO_SEGREDO
 ```
 
-`build`, `teste:sync` e `teste:contas` são as únicas verificações automáticas.
-Rode as três antes de dar qualquer mudança por concluída.
+`build`, `teste:sync`, `teste:contas` e `teste:servidor` são as únicas verificações
+automáticas. Rode as quatro antes de dar qualquer mudança por concluída. Não há
+teste automático de interface nem do que depende de IndexedDB no cliente
+(`aplicarResposta`, restaurar backup): isso se confere no navegador.
 
 ## Invariantes — quebrar qualquer uma destas é bug
 
@@ -40,8 +43,10 @@ Rode as três antes de dar qualquer mudança por concluída.
 4. **O autopreenchimento preenche campo vazio e nunca sobrescreve o digitado.**
    Sobrescrever corromperia o preço de prateleira no histórico.
 5. **Nenhum componente fala com o Dexie.** Todo acesso passa por
-   `src/dados/compras.ts` ou `src/dados/financas.ts` — as duas portas, e mais
-   nenhuma. Elas carimbam `atualizadoEm` e `pendente = 1` (o `carimbo()` mora
+   `src/dados/compras.ts` ou `src/dados/financas.ts` — as duas portas de ESCRITA
+   de negócio. `sincronizacao.ts`, `catalogo.ts` e `backup.ts` (todos em
+   `src/dados/`) também tocam o banco, porque são infraestrutura: sincronizar,
+   reconstruir o catálogo derivado e restaurar um backup. Elas carimbam `atualizadoEm` e `pendente = 1` (o `carimbo()` mora
    em `banco.ts` para as duas usarem o mesmo). Escrita fora dali não sobe para a
    nuvem, e o sintoma só aparece semanas depois.
 6. **Nada é apagado de verdade.** Excluir carimba `excluidoEm`; toda consulta
@@ -260,6 +265,25 @@ Rode as três antes de dar qualquer mudança por concluída.
 
 ## Cuidados
 
+- **O servidor tem freios, e eles são de propósito.** Login: 5 erros por origem em
+  15 min (30 no total) devolvem 429 — quem digita a senha errada 5 vezes espera.
+  IA: `LIMITE_IA_DIA` (padrão 30 chamadas por dia, zera ao reiniciar). Corpo:
+  64 KB nas rotas comuns e 10 MB em `/api/sync` (413 em JSON). Sincronização:
+  registro inválido é descartado e devolvido em `descartados`, o lote segue, e o
+  carimbo de um aparelho é limitado a agora + 5 min. Tudo em memória
+  (`servidor/limites.ts`): com mais de uma instância precisaria ir para o banco.
+- **O fuso é o do usuário, não o do Render.** `ambiente.ts` assume
+  `TZ=America/Sao_Paulo` se a variável faltar: sem isso mês e dia de uma compra
+  das 22h cairiam no dia seguinte na IA e no orçamento.
+- **O PWA não atualiza sozinho** (`registerType: 'prompt'`): mostra "Nova versão
+  disponível" e a pessoa escolhe a hora, porque recarregar no meio de um
+  lançamento perde o que estava digitado. Não bloqueie o zoom no `viewport`.
+- **Excluir é lápide, então avise e deixe desfazer; pergunte só no que não volta.**
+  `useDesfazer` para item, teto e regra; `useConfirmar` (janela do app, nunca
+  `window.confirm`) para o resto.
+- **Telas pesadas são `React.lazy`.** Inicio, lista de compras e a compra ficam no
+  pacote principal (abrir no mercado, sem sinal); o resto é pacote próprio, e o
+  `write-excel-file` só baixa ao exportar.
 - **O driver do Neon é o HTTP, não um pool.** Conexão ociosa impede o banco de
   suspender e queima as 100 horas de compute do plano gratuito em silêncio.
 - **`tsx watch` não sobe sob o `concurrently` no Windows** — por isso `npm run

@@ -53,7 +53,7 @@ export function Entrar() {
           />
         </div>
 
-        {erro && <p className="aviso aviso-erro">{erro}</p>}
+        {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
 
         <button
           type="submit"

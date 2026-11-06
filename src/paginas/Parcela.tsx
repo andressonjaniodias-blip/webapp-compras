@@ -13,6 +13,7 @@
  * esquecer.
  */
 
+import { Carregando } from '../componentes/Carregando';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
@@ -42,8 +43,8 @@ export function Parcela() {
 
   if (carregando) {
     return (
-      <div className="app">
-        <p className="carregando">Carregando…</p>
+      <div className="app" role="main">
+        <Carregando />
       </div>
     );
   }
@@ -51,7 +52,7 @@ export function Parcela() {
   const divida = dados.dividas.find((d) => d.id === dividaId);
   if (!divida) {
     return (
-      <div className="app">
+      <div className="app" role="main">
         <p className="vazio">Empréstimo não encontrado.</p>
       </div>
     );
@@ -86,7 +87,7 @@ export function Parcela() {
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>

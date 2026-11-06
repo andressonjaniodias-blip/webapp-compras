@@ -38,7 +38,10 @@ import type { EstadoFinanceiro } from '../dados/financeiro';
 import {
   extratoDeDividas,
   gastoComDividasNoMes,
+  gastoTotalDoMes,
   parcelasQuitadasDaCompetencia,
+  restanteDasDividas,
+  totalDasMetas,
   resumoDoMes,
   terminaEm,
 } from '../../compartilhado/carteira';
@@ -106,18 +109,17 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
   // custaram no mes (descontado ou pago), a mesma conta da lista.
   const extrato = extratoDeDividas(dados, agora);
   const comDividas = gastoComDividasNoMes(extrato, mes);
-  const totalDoMes = compras ? resumirMes(compras, mes).total + comDividas.total : null;
+  const totalDoMes = compras ? gastoTotalDoMes(resumirMes(compras, mes).total, comDividas) : null;
 
   // ---- Emprestimos: o bloco "Empréstimos" da Carteira, somado, e quantas
   // parcelas do mes ja foram descontadas ou pagas.
   const dividas = visao.carteira.compromissos.filter((c) => c.origem === 'divida');
-  const restanteDasDividas = dividas.reduce((soma, c) => soma + c.falta.restante, 0);
+  const aPagarDasDividas = restanteDasDividas(dividas);
   const ateQuando = terminaEm(dividas);
   const parcelasDoMes = parcelasQuitadasDaCompetencia(extrato, mes);
 
   // ---- Metas: o total guardado e o total do alvo, de todas elas.
-  const guardado = dados.metas.reduce((soma, m) => soma + m.guardado, 0);
-  const alvo = dados.metas.reduce((soma, m) => soma + m.valorAlvo, 0);
+  const { guardado, alvo } = totalDasMetas(dados.metas);
 
   // ---- O mes em marcas e as barras: contra o mes tipico, que e a MESMA
   // estimativa da previsao (`visao.estimativa`). Nenhuma conta propria aqui.
@@ -126,7 +128,7 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
   const gastoDosMeses = compras ? serieDeMeses(compras, mes, 6, agora) : [];
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <h1>Compras</h1>
@@ -152,9 +154,9 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
 
       {barras && (
         <section className="cartao" aria-label="Como o mês está indo">
-          <h2 className="secao-titulo" style={{ marginTop: 0 }}>Como o mês está indo</h2>
+          <h2 className="secao-titulo sem-topo">Como o mês está indo</h2>
           {barras.diaADia === null && barras.fixas === null ? (
-            <p className="dica" style={{ marginTop: 0 }}>
+            <p className="dica sem-topo">
               Com um mês completo de compras, o app mostra aqui como o mês está indo.
             </p>
           ) : (
@@ -212,8 +214,15 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
         </Cartao>
 
         <Cartao titulo="Receitas" onAbrir={() => navegar('/receitas')}>
-          <span className="dica">entraram em {soOMes(mes)}</span>
-          <span className="painel-numero">{formatarReais(mesCorrente.entradas)}</span>
+          {temRenda ? (
+            <>
+              <span className="dica">entraram em {soOMes(mes)}</span>
+              <span className="painel-numero">{formatarReais(mesCorrente.entradas)}</span>
+            </>
+          ) : (
+            // Princípio 0: sem entrada lançada não há número, nem "R$ 0,00".
+            <span className="dica">Nenhuma entrada lançada.</span>
+          )}
         </Cartao>
 
         <Cartao titulo="Este mês" onAbrir={() => navegar('/resumo')}>
@@ -225,7 +234,7 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
               </span>
             </>
           ) : (
-            <span className="dica">Lance as entradas para ver a sobra do mês.</span>
+            <span className="dica">Sem entradas para calcular a sobra.</span>
           )}
         </Cartao>
 
@@ -239,7 +248,7 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
               )}
             </>
           ) : (
-            <span className="dica">Cadastre uma conta para ver o saldo.</span>
+            <span className="dica">Nenhuma conta cadastrada.</span>
           )}
         </Cartao>
 
@@ -247,7 +256,7 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
           {temDividas ? (
             <>
               <span className="dica">ainda falta pagar</span>
-              <span className="painel-numero">{formatarReais(restanteDasDividas)}</span>
+              <span className="painel-numero">{formatarReais(aPagarDasDividas)}</span>
               {ateQuando && <span className="dica">até {nomeMes(ateQuando)}</span>}
               {parcelasDoMes.total > 0 && (
                 <span className="dica">

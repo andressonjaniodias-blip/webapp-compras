@@ -12,7 +12,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt', e nao 'autoUpdate': atualizar sozinho recarregava a pagina no meio de
+      // um lancamento. O app avisa ("Nova versao disponivel") e a pessoa escolhe a hora.
+      // O registro do service worker mora em `src/lib/versao.ts`.
+      registerType: 'prompt',
       includeAssets: ['icone-192.png', 'icone-512.png', 'icone-maskable.png'],
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
@@ -27,11 +30,10 @@ export default defineConfig({
         start_url: './',
         scope: './',
         display: 'standalone',
-        orientation: 'portrait',
         // O manifesto aceita UMA cor, e ela pinta a tela de abertura antes de
         // o app saber o tema. Fica a escura; depois de aberto, as `theme-color`
-        // do `index.html` assumem. O icone ainda e o azul-grafite de antes: trocar
-        // o icone esta em `pendencias.md`.
+        // do `index.html` assumem. Sem `orientation`: travar em retrato impede
+        // quem usa o app num suporte ou num teclado fisico (WCAG 1.3.4).
         background_color: '#0a0a0a',
         theme_color: '#0a0a0a',
         icons: [

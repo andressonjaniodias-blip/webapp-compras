@@ -154,7 +154,7 @@ export function Cupom({
         <div className="cupom-pizza">
           <svg
             viewBox="0 0 180 180"
-            role="img"
+            role="group"
             aria-labelledby={idDoGrafico}
           >
             <title id={idDoGrafico}>

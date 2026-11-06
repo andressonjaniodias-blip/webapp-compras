@@ -39,6 +39,7 @@ export function BarraDeProgresso({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(fracao * 100)}
+      aria-valuetext={rotulo}
       style={{ display: 'block', width: '100%', height: 'auto' }}
     >
       {emCasas && segmentos ? (

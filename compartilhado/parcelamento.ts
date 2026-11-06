@@ -174,11 +174,6 @@ export function somar(parcelas: readonly Parcela[]): number {
   return parcelas.reduce((total, parcela) => total + parcela.valor, 0);
 }
 
-/** Parcelas que caem numa competencia. */
-export function daCompetencia(parcelas: readonly Parcela[], competencia: string): Parcela[] {
-  return parcelas.filter((parcela) => parcela.competencia === competencia);
-}
-
 /** Uma competencia fechada em si mesma: o que vence no mes e o que foi pago nele. */
 export interface Ciclo {
   competencia: string;

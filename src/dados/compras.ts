@@ -64,7 +64,13 @@ export async function listarItens(compraId: string): Promise<ItemLocal[]> {
  */
 export async function listarTodosOsItens(): Promise<ItemLocal[]> {
   const todos = await banco.itens.toArray();
-  return todos.filter(naoExcluido);
+  // Item de compra excluida tambem fica de fora (invariante 6): o servidor ja faz
+  // isso, e a regra "a ultima escrita vence" pode deixar um item vivo sob uma
+  // compra que outro aparelho excluiu.
+  const mortas = new Set(
+    (await banco.compras.toArray()).filter((c) => !naoExcluido(c)).map((c) => c.id),
+  );
+  return todos.filter((item) => naoExcluido(item) && !mortas.has(item.compraId));
 }
 
 /**
@@ -206,6 +212,22 @@ export async function removerItem(id: string): Promise<void> {
 
   await banco.transaction('rw', banco.compras, banco.itens, async () => {
     await banco.itens.update(id, { excluidoEm: Date.now(), ...carimbo() });
+    await recalcular(item.compraId);
+  });
+}
+
+/**
+ * Tira a lapide de um item e recalcula a compra: e o "Desfazer" de `removerItem`.
+ * So volta se a compra dele ainda existir.
+ */
+export async function restaurarItem(id: string): Promise<void> {
+  const item = await banco.itens.get(id);
+  if (!item) return;
+
+  await banco.transaction('rw', banco.compras, banco.itens, async () => {
+    const compra = await banco.compras.get(item.compraId);
+    if (!compra || !naoExcluido(compra)) return;
+    await banco.itens.update(id, { excluidoEm: null, ...carimbo() });
     await recalcular(item.compraId);
   });
 }

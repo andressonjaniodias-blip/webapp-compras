@@ -32,15 +32,20 @@ interface Props {
   onEscolher: (entrada: EntradaCatalogo) => void;
 }
 
+/** O id da lista e o de cada opcao: o campo de nome os cita em `aria-controls` e `aria-activedescendant`. */
+export const ID_DA_LISTA = 'sugestoes-do-item';
+export const idDaSugestao = (indice: number) => `sugestao-do-item-${indice}`;
+
 export function SugestoesItem({ sugestoes, destacado, onEscolher }: Props) {
   if (sugestoes.length === 0) return null;
 
   return (
-    <ul className="sugestoes" role="listbox" aria-label="Itens já comprados">
+    <ul id={ID_DA_LISTA} className="sugestoes" role="listbox" aria-label="Itens já comprados">
       {sugestoes.map((entrada, indice) => (
         <li key={entrada.chave}>
           <button
             type="button"
+            id={idDaSugestao(indice)}
             className={'sugestao' + (indice === destacado ? ' sugestao-destacada' : '')}
             role="option"
             aria-selected={indice === destacado}
@@ -76,8 +81,18 @@ function Preco({ entrada }: { entrada: EntradaCatalogo }) {
 
   return (
     <>
-      {subiu && <span className="subiu">▲ </span>}
-      {caiu && <span className="caiu">▼ </span>}
+      {subiu && (
+        <span className="subiu">
+          <span aria-hidden="true">▲ </span>
+          <span className="so-leitor">subiu, </span>
+        </span>
+      )}
+      {caiu && (
+        <span className="caiu">
+          <span aria-hidden="true">▼ </span>
+          <span className="so-leitor">caiu, </span>
+        </span>
+      )}
       {formatarReais(entrada.ultimoPreco)}
       {(subiu || caiu) && <span className="sugestao-antes"> · era {formatarReais(anterior)}</span>}
       {' · '}

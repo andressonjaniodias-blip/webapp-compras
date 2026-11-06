@@ -45,6 +45,7 @@
  * jamais por falta de dado ou de rede.
  */
 
+import { Carregando } from '../componentes/Carregando';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { criarCompra, listarCompras } from '../dados/compras';
@@ -55,6 +56,7 @@ import {
   extratoDeDividas,
   faturasNoMes,
   gastoComDividasNoMes,
+  gastoTotalDoMes,
   type ParcelaDeCartao,
   type ParcelaDeDivida,
 } from '../../compartilhado/carteira';
@@ -115,7 +117,7 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
   const comDividas = gastoComDividasNoMes(extrato, mes);
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           {!inicio && (
@@ -128,11 +130,11 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
             <button
               type="button"
               className="botao-icone"
-              aria-label="Controle financeiro"
+              aria-label="Carteira"
               onClick={() => navegar('/carteira')}
             >
               💳
-              <span className="rotulo-largo">Controle financeiro</span>
+              <span className="rotulo-largo">Carteira</span>
             </button>
           )}
           {inicio && (
@@ -161,7 +163,7 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
         {inicio && <BarraSituacao />}
       </header>
 
-      {compras === undefined && <p className="carregando">Carregando…</p>}
+      {compras === undefined && <Carregando />}
 
       {compras !== undefined && (
         <>
@@ -175,7 +177,7 @@ export function ListaCompras({ inicio = false }: { inicio?: boolean }) {
           */}
           <div className="mes-total">
             <span>{gastos ? 'Gastei' : 'Comprei'} em {mesPorExtenso}</span>
-            <span>{formatarReais(compradoNoMes + comDividas.total)}</span>
+            <span>{formatarReais(gastoTotalDoMes(compradoNoMes, comDividas))}</span>
           </div>
           {comDividas.parcelas > 0 && (
             <p className="dica mes-total-detalhe">

@@ -13,6 +13,7 @@
  * conta, `entradasDeCaixaEntre`, com o vale fora.
  */
 
+import { Carregando } from '../componentes/Carregando';
 import { useNavigate } from 'react-router-dom';
 import { criarRenda } from '../dados/financas';
 import { useFinanceiro } from '../dados/financeiro';
@@ -47,7 +48,7 @@ export function Receitas() {
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
@@ -57,7 +58,7 @@ export function Receitas() {
         </div>
       </header>
 
-      {carregando && <p className="carregando">Carregando…</p>}
+      {carregando && <Carregando />}
 
       {!carregando && (
         <>

@@ -12,6 +12,7 @@
  * fatura seria indistinguivel de gastar de novo.
  */
 
+import { Carregando } from '../componentes/Carregando';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CampoDinheiro } from '../componentes/CampoDinheiro';
@@ -41,8 +42,8 @@ export function Fatura() {
 
   if (carregando) {
     return (
-      <div className="app">
-        <p className="carregando">Carregando…</p>
+      <div className="app" role="main">
+        <Carregando />
       </div>
     );
   }
@@ -50,7 +51,7 @@ export function Fatura() {
   const conta = acharConta(dados.contas, contaId);
   if (!conta || conta.tipo !== 'credito') {
     return (
-      <div className="app">
+      <div className="app" role="main">
         <p className="vazio">Cartão não encontrado.</p>
       </div>
     );
@@ -81,7 +82,7 @@ export function Fatura() {
   }
 
   return (
-    <div className="app">
+    <div className="app" role="main">
       <header className="topo">
         <div className="topo-linha">
           <button type="button" className="botao-icone" aria-label="Voltar" onClick={voltar}>
