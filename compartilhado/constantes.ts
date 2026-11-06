@@ -80,7 +80,38 @@ export function grupoDaCategoria(categoria: string): GrupoCategoria {
   return GRUPO_DA_CATEGORIA[categoria] ?? GRUPO_PADRAO;
 }
 
-export const FORMAS_PAGAMENTO = ['Débito', 'Crédito', 'Pix', 'Dinheiro', 'Vale'] as const;
+/**
+ * A categoria "de cima", so para EXIBIR: o orcamento agrupa as categorias de hoje
+ * (que, vistas daqui, sao as subcategorias) em poucos blocos.
+ *
+ * O nome no codigo e "macrocategoria" porque "grupo" ja quer dizer
+ * fixo/variavel/eventual (acima), e reusar a palavra confundiria as duas coisas.
+ *
+ * Nao muda como a compra e registrada: a compra continua guardando so a
+ * categoria de sempre, e este mapa e consultado na hora de desenhar. Por isso e
+ * fixo no codigo, e nao um cadastro do usuario. Categoria digitada a mao, ou de
+ * app antigo, cai em "Outros". A ordem daqui e a ordem na tela.
+ */
+export const MACROCATEGORIAS: readonly { nome: string; subcategorias: readonly string[] }[] = [
+  { nome: 'Alimentação', subcategorias: ['Mercado', 'Comer fora'] },
+  { nome: 'Transporte', subcategorias: ['Transporte', 'Combustível'] },
+  { nome: 'Moradia', subcategorias: ['Casa', 'Contas de casa', 'Pets'] },
+  { nome: 'Saúde e cuidados', subcategorias: ['Farmácia', 'Saúde', 'Beleza e cuidados'] },
+  { nome: 'Lazer e estilo', subcategorias: ['Lazer', 'Assinaturas', 'Vestuário', 'Presentes'] },
+  { nome: 'Educação e taxas', subcategorias: ['Educação', 'Taxas e impostos'] },
+  { nome: 'Outros', subcategorias: ['Outros'] },
+];
+
+/** Onde cai o que nao esta no mapa: o mesmo bloco de "Outros". */
+export const MACROCATEGORIA_PADRAO = 'Outros';
+
+export function macrocategoriaDe(categoria: string): string {
+  return (
+    MACROCATEGORIAS.find((m) => m.subcategorias.includes(categoria))?.nome ?? MACROCATEGORIA_PADRAO
+  );
+}
+
+export const FORMAS_PAGAMENTO =['Débito', 'Crédito', 'Pix', 'Dinheiro', 'Vale'] as const;
 
 export const UNIDADES = ['un', 'kg', 'g', 'L', 'ml', 'cx', 'pct'] as const;
 

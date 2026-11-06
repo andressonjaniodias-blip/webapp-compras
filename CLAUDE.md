@@ -186,7 +186,15 @@ Rode as três antes de dar qualquer mudança por concluída.
     base de entrada (invariante 22) e deixa o cartão de fora de propósito. O
     orçamento é um registro por ano (`id = orcamento:<ano>`) com as linhas em
     JSON; toda edição de linha passa por `alterarOrcamento` (transação), senão
-    duas edições seguidas se sobrescrevem. Ainda não alimenta `projetar`. A
+    duas edições seguidas se sobrescrevem. **O teto é anual, mas o que se
+    acompanha no dia a dia é o limite do mês** (`executarMes`): `(teto − gasto de
+    janeiro até o mês anterior) ÷ meses que faltam, contando o mês`. Em janeiro é
+    a média (`mediaMensal`, `floor(teto/12)`); gastar menos sobe o limite do mês
+    seguinte, gastar mais desce, passar do teto zera. Mês futuro repete o limite
+    do mês corrente; ano seguinte é teto/12 em todos. As subcategorias aparecem
+    agrupadas em macrocategorias (`MACROCATEGORIAS` em `constantes.ts`) **só na
+    exibição**: a compra guarda a categoria de sempre e o teto é por categoria.
+    Ainda não alimenta `projetar`. A
     análise de IA do mês (`analises`) é o oposto: só no aparelho, não sincroniza.
 
 ## Convenções

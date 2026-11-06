@@ -28,10 +28,13 @@ import {
   atualizarProposta,
   avisoDeAtualizacao,
   executar,
+  executarMes,
   folgaDoOrcamento,
+  mediaMensal,
   mesesDeUso,
   orcamentoLiberado,
   propor,
+  somaPorMacro,
 } from '../../compartilhado/orcamento';
 import type { LinhaOrcamento } from '../../compartilhado/tipos';
 import { pedirParecerDoOrcamento } from '../dados/api';
@@ -54,8 +57,6 @@ function apenasMes(chave: string): string {
   return nomeMes(chave).replace(/ de \d{4}$/, '');
 }
 
-const porMes = (centavos: number) => Math.round(centavos / 12);
-
 export function Orcamento() {
   const voltar = useVoltar('/carteira');
   const { atualizarPendentes, iaLigada, modeloIa, offline, plano } = useApp();
@@ -66,6 +67,7 @@ export function Orcamento() {
   const anoAtual = new Date(agora).getFullYear();
   const [ano, setAno] = useState(anoAtual);
   const [mesEscolhido, setMesEscolhido] = useState<string | null>(null);
+  const [visao, setVisao] = useState<'mes' | 'ano'>('mes');
   const [ajustando, setAjustando] = useState(false);
   const [pedindo, setPedindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -333,6 +335,8 @@ export function Orcamento() {
             onMes={setMesEscolhido}
             compras={dados.compras}
             agora={agora}
+            visao={visao}
+            onVisao={setVisao}
           />}
 
           <h2 className="secao-titulo">{rascunho ? 'Tetos por categoria' : 'Ajustar os tetos'}</h2>
@@ -344,8 +348,19 @@ export function Orcamento() {
 
           {editavel && (
             <>
+              {somaPorMacro(orc.linhas).map((bloco) => (
+              <section key={bloco.macro}>
+              <h3
+                className="secao-titulo"
+                style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}
+              >
+                <span>{bloco.macro}</span>
+                <span>
+                  {formatarReais(bloco.teto)}/ano · {formatarReais(mediaMensal(bloco.teto))}/mês
+                </span>
+              </h3>
               <ul className="lista">
-                {orc.linhas.map((linha) => {
+                {bloco.linhas.map((linha) => {
                   const diferente = linha.proposto !== linha.valorAnual;
                   return (
                     <li key={linha.categoria} className="cartao">
@@ -358,7 +373,7 @@ export function Orcamento() {
                         onChange={(valorAnual) => mudarLinha(linha.categoria, { valorAnual })}
                       />
                       <p className="dica">
-                        {formatarReais(porMes(linha.valorAnual))} por mês em média no ano
+                        Média de {formatarReais(mediaMensal(linha.valorAnual))} por mês
                         {linha.original !== null && linha.original !== linha.valorAnual &&
                           ` · ajustado de ${formatarReais(linha.original)}`}
                       </p>
@@ -385,6 +400,8 @@ export function Orcamento() {
                   );
                 })}
               </ul>
+              </section>
+              ))}
 
               {novas.length > 0 && (
                 <div className="cartao">
@@ -527,8 +544,78 @@ export function Orcamento() {
   );
 }
 
-/** O realizado contra o teto, categoria a categoria, num mes em foco. */
+/**
+ * O acompanhamento: DUAS visoes do mesmo teto, separadas.
+ *
+ *   Mes  -> o limite deste mes (a media do teto, ajustada pelo que ja foi gasto) contra o gasto do mes
+ *   Ano  -> o teto do ano contra o gasto do ano
+ *
+ * Cada visao agrupa em macrocategorias, que so organizam a exibicao: o teto
+ * continua sendo de cada subcategoria. Todo numero vem de `executarMes` e
+ * `executar`; aqui so se desenha.
+ */
 function Acompanhamento({
+  orc,
+  mes,
+  mesesDoAno,
+  onMes,
+  compras,
+  agora,
+  visao,
+  onVisao,
+}: {
+  orc: { ano: number; linhas: LinhaOrcamento[] };
+  mes: string;
+  mesesDoAno: string[];
+  onMes: (mes: string) => void;
+  compras: Parameters<typeof executar>[0];
+  agora: number;
+  visao: 'mes' | 'ano';
+  onVisao: (visao: 'mes' | 'ano') => void;
+}) {
+  return (
+    <>
+      <h2 className="secao-titulo">Acompanhamento</h2>
+      <div className="acoes" style={{ marginTop: 0, flexDirection: 'row' }}>
+        {(['mes', 'ano'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            className={'botao' + (v === visao ? ' botao-primario' : '')}
+            style={{ flex: 1 }}
+            aria-pressed={v === visao}
+            onClick={() => onVisao(v)}
+          >
+            {v === 'mes' ? 'Mês' : 'Ano'}
+          </button>
+        ))}
+      </div>
+
+      {visao === 'mes' ? (
+        <VisaoMensal
+          orc={orc}
+          mes={mes}
+          mesesDoAno={mesesDoAno}
+          onMes={onMes}
+          compras={compras}
+          agora={agora}
+        />
+      ) : (
+        <VisaoAnual orc={orc} mes={mes} compras={compras} agora={agora} />
+      )}
+    </>
+  );
+}
+
+/** "+R$ 45,45" / "−R$ 12,00": quanto o gasto dos meses anteriores mexeu no limite. */
+function textoDoAjuste(ajuste: number): string | null {
+  if (ajuste === 0) return null;
+  return ajuste > 0
+    ? `sobe ${formatarReais(ajuste)} por você ter gasto menos antes`
+    : `desce ${formatarReais(-ajuste)} por você ter gasto mais antes`;
+}
+
+function VisaoMensal({
   orc,
   mes,
   mesesDoAno,
@@ -543,15 +630,111 @@ function Acompanhamento({
   compras: Parameters<typeof executar>[0];
   agora: number;
 }) {
+  const exec = executarMes(compras, orc, mes, agora);
+
+  return (
+    <>
+      <NavegadorDeMes meses={mesesDoAno} mes={mes} onChange={onMes} />
+
+      <section className="cartao">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+          <span className="dica">gasto em {apenasMes(mes)}</span>
+          <SeloDeEstado estado={exec.estado} />
+        </div>
+        <div className="total-grande">{formatarReais(exec.gasto)}</div>
+        <BarraDeProgresso
+          progresso={exec.limite > 0 ? exec.gasto / exec.limite : exec.gasto > 0 ? 1 : 0}
+          rotulo={`${formatarReais(exec.gasto)} gastos de um limite de ${formatarReais(exec.limite)} em ${apenasMes(mes)}`}
+        />
+        <p className="dica">
+          de {formatarReais(exec.limite)} de limite do mês ·{' '}
+          {exec.estourou > 0
+            ? `passou ${formatarReais(exec.estourou)}`
+            : `restam ${formatarReais(exec.restante)}`}
+        </p>
+        <p className="dica">
+          O limite do mês é a média do teto anual, ajustada pelo que você já gastou no ano.
+        </p>
+      </section>
+
+      {exec.macros.map((bloco) => (
+        <section key={bloco.macro}>
+          <h3
+            className="secao-titulo"
+            style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}
+          >
+            <span>{bloco.macro}</span>
+            <SeloDeEstado estado={bloco.estado} />
+          </h3>
+          <p className="dica" style={{ marginTop: 0 }}>
+            {formatarReais(bloco.gasto)} de {formatarReais(bloco.limite)}
+          </p>
+          <ul className="lista">
+            {bloco.linhas.map((l) => {
+              const ajuste = textoDoAjuste(l.ajuste);
+              return (
+                <li key={l.categoria} className="cartao">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <strong>{l.categoria}</strong>
+                    <SeloDeEstado estado={l.estado} />
+                  </div>
+                  <p className="dica" style={{ margin: '4px 0' }}>
+                    {formatarReais(l.gastoNoMes)} de {formatarReais(l.limiteDoMes)}
+                  </p>
+                  <BarraDeProgresso
+                    progresso={
+                      l.limiteDoMes > 0 ? l.gastoNoMes / l.limiteDoMes : l.gastoNoMes > 0 ? 1 : 0
+                    }
+                    rotulo={`${l.categoria}: ${formatarReais(l.gastoNoMes)} de ${formatarReais(l.limiteDoMes)}`}
+                  />
+                  <p className="dica">
+                    {l.estourou > 0
+                      ? `passou ${formatarReais(l.estourou)} do limite · `
+                      : `restam ${formatarReais(l.restanteDoMes)} · `}
+                    média de {formatarReais(l.media)}
+                    {ajuste && ` · o limite ${ajuste}`}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+
+      {exec.fora.length > 0 && (
+        <div className="cartao">
+          <strong>Fora do orçamento</strong>
+          <p className="dica">Categorias com gasto em {apenasMes(mes)} e sem teto.</p>
+          <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
+            {exec.fora.map((f) => (
+              <li key={f.categoria}>
+                {f.categoria} · {formatarReais(f.gastoNoMes)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
+function VisaoAnual({
+  orc,
+  mes,
+  compras,
+  agora,
+}: {
+  orc: { ano: number; linhas: LinhaOrcamento[] };
+  mes: string;
+  compras: Parameters<typeof executar>[0];
+  agora: number;
+}) {
   const exec = executar(compras, orc, mes, agora);
   const progressoGeral = exec.totalDosTetos > 0 ? exec.gastoNoAno / exec.totalDosTetos : 0;
 
   return (
     <>
-      <h2 className="secao-titulo">Acompanhamento</h2>
-      <NavegadorDeMes meses={mesesDoAno} mes={mes} onChange={onMes} />
-
-      <section className="cartao">
+      <section className="cartao" style={{ marginTop: 12 }}>
         <span className="dica">gasto no ano, nas categorias com teto</span>
         <div className="total-grande">{formatarReais(exec.gastoNoAno)}</div>
         <BarraDeProgresso
@@ -560,37 +743,48 @@ function Acompanhamento({
         />
         <p className="dica">
           de {formatarReais(exec.totalDosTetos)} em tetos · ainda cabem {formatarReais(exec.restante)}
-          {exec.mesesQueFaltam > 0 && ` em ${exec.mesesQueFaltam} ${exec.mesesQueFaltam === 1 ? 'mês' : 'meses'}`}
+          {exec.mesesQueFaltam > 0 &&
+            ` em ${exec.mesesQueFaltam} ${exec.mesesQueFaltam === 1 ? 'mês' : 'meses'}`}
         </p>
-        <p className="dica">em {apenasMes(mes)}: {formatarReais(exec.gastoNoMes)}</p>
       </section>
 
-      <ul className="lista">
-        {exec.linhas.map((l) => (
-          <li key={l.categoria} className="cartao">
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <strong>{l.categoria}</strong>
-              <SeloDeEstado estado={l.estado} />
-            </div>
-            <p className="dica" style={{ margin: '4px 0' }}>
-              {formatarReais(l.gastoNoAno)} de {formatarReais(l.teto)}
-              {l.ajustadoDe !== null && ` · ajustado de ${formatarReais(l.ajustadoDe)}`}
-            </p>
-            <BarraDeProgresso
-              progresso={l.teto > 0 ? l.gastoNoAno / l.teto : l.gastoNoAno > 0 ? 1 : 0}
-              rotulo={`${l.categoria}: ${formatarReais(l.gastoNoAno)} de ${formatarReais(l.teto)}`}
-            />
-            <p className="dica">
-              em {apenasMes(mes)}: {formatarReais(l.gastoNoMes)}
-              {l.estado === 'estoura'
-                ? ` · passou ${formatarReais(l.estourou)} do teto`
-                : l.ritmoPorMes > 0
-                  ? ` · dá ${formatarReais(l.ritmoPorMes)} por mês até o fim do ano`
-                  : ''}
-            </p>
-          </li>
-        ))}
-      </ul>
+      {exec.macros.map((bloco) => (
+        <section key={bloco.macro}>
+          <h3
+            className="secao-titulo"
+            style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}
+          >
+            <span>{bloco.macro}</span>
+            <SeloDeEstado estado={bloco.estado} />
+          </h3>
+          <p className="dica" style={{ marginTop: 0 }}>
+            {formatarReais(bloco.gastoNoAno)} de {formatarReais(bloco.teto)} no ano
+          </p>
+          <ul className="lista">
+            {bloco.linhas.map((l) => (
+              <li key={l.categoria} className="cartao">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <strong>{l.categoria}</strong>
+                  <SeloDeEstado estado={l.estado} />
+                </div>
+                <p className="dica" style={{ margin: '4px 0' }}>
+                  {formatarReais(l.gastoNoAno)} de {formatarReais(l.teto)}
+                  {l.ajustadoDe !== null && ` · ajustado de ${formatarReais(l.ajustadoDe)}`}
+                </p>
+                <BarraDeProgresso
+                  progresso={l.teto > 0 ? l.gastoNoAno / l.teto : l.gastoNoAno > 0 ? 1 : 0}
+                  rotulo={`${l.categoria}: ${formatarReais(l.gastoNoAno)} de ${formatarReais(l.teto)}`}
+                />
+                <p className="dica">
+                  {l.estado === 'estoura'
+                    ? `passou ${formatarReais(l.estourou)} do teto`
+                    : `restam ${formatarReais(l.restante)} no ano`}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
 
       {exec.fora.length > 0 && (
         <div className="cartao">

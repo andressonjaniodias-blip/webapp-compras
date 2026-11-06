@@ -16,6 +16,7 @@
  * Funcoes puras, sem Dexie: rodam no aparelho e no servidor.
  */
 
+import { MACROCATEGORIAS, macrocategoriaDe } from './constantes';
 import { chaveDoMes, intervaloDoMes, partesDaChave, somarMeses } from './fatura';
 import { mesesCompletosAntes, type DadosFinanceiros } from './carteira';
 import {
@@ -243,8 +244,57 @@ export interface ForaDoOrcamento {
   gastoNoMes: number;
 }
 
+/**
+ * A media mensal de um teto anual. Floor, e nao round: e o limite de janeiro
+ * (`executarMes`), e os 12 limites somados nunca podem passar do teto.
+ */
+export function mediaMensal(tetoAnual: number): number {
+  return Math.floor(tetoAnual / 12);
+}
+
+/**
+ * Agrupa por macrocategoria, na ordem de `MACROCATEGORIAS`, sem blocos vazios.
+ * Categoria fora do mapa cai em "Outros" (ver `macrocategoriaDe`).
+ */
+function agrupar<T extends { categoria: string }>(itens: readonly T[]): { macro: string; itens: T[] }[] {
+  const porMacro = new Map<string, T[]>();
+  for (const item of itens) {
+    const macro = macrocategoriaDe(item.categoria);
+    porMacro.set(macro, [...(porMacro.get(macro) ?? []), item]);
+  }
+  return MACROCATEGORIAS.filter((m) => porMacro.has(m.nome)).map((m) => ({
+    macro: m.nome,
+    itens: porMacro.get(m.nome)!,
+  }));
+}
+
+const somar = (valores: readonly number[]) => valores.reduce((total, v) => total + v, 0);
+
+/** A soma dos tetos de cada macrocategoria, para a lista do rascunho. */
+export function somaPorMacro(
+  linhas: readonly LinhaOrcamento[],
+): { macro: string; linhas: LinhaOrcamento[]; teto: number }[] {
+  return agrupar(linhas).map(({ macro, itens }) => ({
+    macro,
+    linhas: itens,
+    teto: somar(itens.map((l) => l.valorAnual)),
+  }));
+}
+
+/** Uma macrocategoria na visao ANUAL: as subcategorias e a soma delas. */
+export interface MacroExecutada {
+  macro: string;
+  linhas: LinhaExecutada[];
+  teto: number;
+  gastoNoAno: number;
+  restante: number;
+  estourou: number;
+  estado: EstadoDoLimite;
+}
+
 export interface Execucao {
   linhas: LinhaExecutada[];
+  macros: MacroExecutada[];
   fora: ForaDoOrcamento[];
   totalDosTetos: number;
   /** Gasto das categorias que tem teto. */
@@ -311,9 +361,23 @@ export function executar(
   }
   fora.sort((a, b) => b.gastoNoAno - a.gastoNoAno);
 
-  const soma = (valores: number[]) => valores.reduce((total, v) => total + v, 0);
+  const soma = (valores: number[]) => somar(valores);
+  const macros: MacroExecutada[] = agrupar(linhas).map(({ macro, itens }) => {
+    const teto = soma(itens.map((l) => l.teto));
+    const gastoNoAno = soma(itens.map((l) => l.gastoNoAno));
+    return {
+      macro,
+      linhas: itens,
+      teto,
+      gastoNoAno,
+      restante: soma(itens.map((l) => l.restante)),
+      estourou: Math.max(0, gastoNoAno - teto),
+      estado: estadoDoLimite(gastoNoAno, teto),
+    };
+  });
   return {
     linhas,
+    macros,
     fora,
     totalDosTetos: soma(linhas.map((l) => l.teto)),
     gastoNoAno: soma(linhas.map((l) => l.gastoNoAno)),
@@ -321,6 +385,150 @@ export function executar(
     gastoForaNoAno: soma(fora.map((f) => f.gastoNoAno)),
     restante: soma(linhas.map((l) => l.restante)),
     mesesQueFaltam: faltam,
+  };
+}
+
+// ------------------------------------------------------------ visao mensal
+
+export interface LinhaDoMes {
+  categoria: string;
+  /** O teto anual, para a tela poder dizer "de um teto de R$ X no ano". */
+  teto: number;
+  /** O teto anual dividido por 12: o limite de janeiro. */
+  media: number;
+  /** O que cabe NESTE mes, depois de descontar o que ja foi gasto no ano. */
+  limiteDoMes: number;
+  /** `limiteDoMes - media`: quanto o gasto dos meses anteriores subiu (+) ou desceu (-) o limite. */
+  ajuste: number;
+  gastoNoMes: number;
+  /** `limiteDoMes - gastoNoMes`, sem passar de 0. */
+  restanteDoMes: number;
+  /** O que passou do limite do mes. */
+  estourou: number;
+  estado: EstadoDoLimite;
+}
+
+/** Uma macrocategoria na visao MENSAL: as subcategorias e a soma delas. */
+export interface MacroDoMes {
+  macro: string;
+  linhas: LinhaDoMes[];
+  limite: number;
+  gasto: number;
+  restante: number;
+  estourou: number;
+  estado: EstadoDoLimite;
+}
+
+export interface ExecucaoDoMes {
+  mes: string;
+  linhas: LinhaDoMes[];
+  macros: MacroDoMes[];
+  /** Categorias com gasto no mes e sem teto. */
+  fora: { categoria: string; gastoNoMes: number }[];
+  limite: number;
+  gasto: number;
+  restante: number;
+  estourou: number;
+  gastoFora: number;
+  estado: EstadoDoLimite;
+}
+
+/**
+ * O limite de CADA mes: a media do teto anual, ajustada pelo que ja foi gasto.
+ *
+ *   limite do mes = (teto - gasto de janeiro ate o mes anterior) / meses que faltam, contando este
+ *
+ * Em janeiro e o teto / 12. Quem gastou menos que a media num mes ganha folga no
+ * seguinte; quem gastou mais, perde. Passou do teto do ano, o limite e 0. Usa o
+ * acumulado do ano, e nao so o mes anterior, de proposito: assim a soma dos 12
+ * limites nunca passa do teto, e gastar exatamente o limite todo mes fecha o ano
+ * no teto.
+ *
+ * Mes que ainda nao chegou repete o limite do mes corrente (se cada mes gastar o
+ * seu limite, ele continua o mesmo). Ano seguinte, sem gasto nenhum, e teto / 12 em
+ * todo mes. Mes passado mostra o limite COMO ERA na epoca, com o que se sabia.
+ *
+ * Mesmo gasto de `executar` — `compra.total` inteiro na data da compra — so que
+ * fatiado por mes.
+ */
+export function executarMes(
+  compras: readonly Compra[],
+  orcamento: Pick<Orcamento, 'ano' | 'linhas'>,
+  mes: string,
+  agora: number,
+): ExecucaoDoMes {
+  const { ano } = orcamento;
+  const hoje = partesDaChave(chaveDoMes(agora));
+  const indice = partesDaChave(mes).mes;
+
+  // Ate qual mes o gasto ja "aconteceu". Ano seguinte: nenhum. Ano passado: todos.
+  const indiceDeHoje = ano > hoje.ano ? -1 : ano < hoje.ano ? 11 : hoje.mes;
+  const base = indiceDeHoje < 0 ? 0 : Math.min(indice, indiceDeHoje);
+  const mesesQueFaltam = 12 - base;
+
+  const antes =
+    base > 0
+      ? totaisPorCategoria(
+          compras,
+          intervaloDoMes(`${ano}-01`).inicio,
+          intervaloDoMes(`${ano}-${String(base).padStart(2, '0')}`).fim,
+        )
+      : new Map<string, number>();
+  const intervalo = intervaloDoMes(mes);
+  const noMes = totaisPorCategoria(compras, intervalo.inicio, intervalo.fim);
+
+  const linhas: LinhaDoMes[] = orcamento.linhas.map((linha) => {
+    const limiteDoMes = Math.floor(
+      Math.max(0, linha.valorAnual - (antes.get(linha.categoria) ?? 0)) / mesesQueFaltam,
+    );
+    const media = mediaMensal(linha.valorAnual);
+    const gastoNoMes = noMes.get(linha.categoria) ?? 0;
+    return {
+      categoria: linha.categoria,
+      teto: linha.valorAnual,
+      media,
+      limiteDoMes,
+      ajuste: limiteDoMes - media,
+      gastoNoMes,
+      restanteDoMes: Math.max(0, limiteDoMes - gastoNoMes),
+      estourou: Math.max(0, gastoNoMes - limiteDoMes),
+      estado: estadoDoLimite(gastoNoMes, limiteDoMes),
+    };
+  });
+
+  const macros: MacroDoMes[] = agrupar(linhas).map(({ macro, itens }) => {
+    const limite = somar(itens.map((l) => l.limiteDoMes));
+    const gasto = somar(itens.map((l) => l.gastoNoMes));
+    return {
+      macro,
+      linhas: itens,
+      limite,
+      gasto,
+      restante: somar(itens.map((l) => l.restanteDoMes)),
+      estourou: Math.max(0, gasto - limite),
+      estado: estadoDoLimite(gasto, limite),
+    };
+  });
+
+  const comTeto = new Set(orcamento.linhas.map((l) => l.categoria));
+  const fora = [...noMes]
+    .filter(([categoria]) => !comTeto.has(categoria))
+    .map(([categoria, gastoNoMes]) => ({ categoria, gastoNoMes }))
+    .sort((a, b) => b.gastoNoMes - a.gastoNoMes);
+
+  const limite = somar(linhas.map((l) => l.limiteDoMes));
+  const gasto = somar(linhas.map((l) => l.gastoNoMes));
+  return {
+    mes,
+    linhas,
+    macros,
+    fora,
+    limite,
+    gasto,
+    restante: somar(linhas.map((l) => l.restanteDoMes)),
+    estourou: Math.max(0, gasto - limite),
+    gastoFora: somar(fora.map((f) => f.gastoNoMes)),
+    estado: estadoDoLimite(gasto, limite),
   };
 }
 

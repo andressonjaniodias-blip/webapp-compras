@@ -46,6 +46,7 @@ import { limitesDo } from '../../compartilhado/planos';
 import {
   MESES_MINIMOS,
   executar,
+  executarMes,
   mesesDeUso,
   orcamentoLiberado,
 } from '../../compartilhado/orcamento';
@@ -91,7 +92,9 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
   const usoEmMeses = mesesDeUso(dados.compras, agora);
   const execucaoDoAno =
     orcamentoDoAno?.situacao === 'confirmado' ? executar(dados.compras, orcamentoDoAno, mes, agora) : null;
-  const estouradas = execucaoDoAno?.linhas.filter((l) => l.estado === 'estoura').length ?? 0;
+  const execucaoDoMes =
+    orcamentoDoAno?.situacao === 'confirmado' ? executarMes(dados.compras, orcamentoDoAno, mes, agora) : null;
+  const estouradas = execucaoDoMes?.linhas.filter((l) => l.estado === 'estoura').length ?? 0;
 
   async function nova() {
     const id = await criarCompra();
@@ -275,18 +278,21 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
         </Cartao>
 
         <Cartao titulo="Orçamento" onAbrir={() => navegar('/orcamento')}>
-          {orcamentos === undefined ? null : execucaoDoAno ? (
+          {orcamentos === undefined ? null : execucaoDoAno && execucaoDoMes ? (
             <>
-              <span className="dica">gasto no ano, nos tetos</span>
-              <span className="painel-numero">{formatarReais(execucaoDoAno.gastoNoAno)}</span>
+              <span className="dica">gasto no mês, no limite</span>
+              <span className="painel-numero">{formatarReais(execucaoDoMes.gasto)}</span>
               <BarraDeProgresso
-                progresso={execucaoDoAno.totalDosTetos > 0 ? execucaoDoAno.gastoNoAno / execucaoDoAno.totalDosTetos : 0}
-                rotulo={`${formatarReais(execucaoDoAno.gastoNoAno)} gastos de ${formatarReais(execucaoDoAno.totalDosTetos)} em tetos`}
+                progresso={execucaoDoMes.limite > 0 ? execucaoDoMes.gasto / execucaoDoMes.limite : execucaoDoMes.gasto > 0 ? 1 : 0}
+                rotulo={`${formatarReais(execucaoDoMes.gasto)} gastos de um limite de ${formatarReais(execucaoDoMes.limite)} no mês`}
               />
               <span className="dica">
-                de {formatarReais(execucaoDoAno.totalDosTetos)}
+                de {formatarReais(execucaoDoMes.limite)}
                 {estouradas > 0 &&
                   ` · ${estouradas} ${estouradas === 1 ? 'categoria estourou' : 'categorias estouraram'}`}
+              </span>
+              <span className="dica">
+                no ano: {formatarReais(execucaoDoAno.gastoNoAno)} de {formatarReais(execucaoDoAno.totalDosTetos)}
               </span>
             </>
           ) : rascunhoAberto ? (

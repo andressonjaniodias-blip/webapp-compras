@@ -14,7 +14,13 @@
  * Roda com: npm run teste:contas
  */
 
-import { grupoDaCategoria, CATEGORIAS, GRUPO_DA_CATEGORIA } from '../compartilhado/constantes';
+import {
+  grupoDaCategoria,
+  CATEGORIAS,
+  GRUPO_DA_CATEGORIA,
+  MACROCATEGORIAS,
+  macrocategoriaDe,
+} from '../compartilhado/constantes';
 import {
   acharConta,
   calcularCarteira,
@@ -100,11 +106,14 @@ import {
   avisoDeAtualizacao,
   estadoDoLimite,
   executar,
+  executarMes,
   folgaDoOrcamento,
   marcoAtingido,
+  mediaMensal,
   mesesDeUso,
   orcamentoLiberado,
   propor,
+  somaPorMacro,
 } from '../compartilhado/orcamento';
 
 let falhas = 0;
@@ -2565,6 +2574,122 @@ console.log('\n22. Orcamento anual: tempo de uso, proposta, execucao e envelope'
     folgaDoOrcamento(dados({ compras: historico }), orcamento2027, agora, 400_000)!.entradas,
     4_800_000,
   );
+}
+
+// ============================ 22b. orcamento: limite do mes e macrocategorias
+
+/*
+ * O teto e anual, mas o que se observa no dia a dia e o limite do MES: a media do
+ * teto, ajustada pelo que ja foi gasto (`executarMes`). E as 17 categorias
+ * aparecem agrupadas em poucas macrocategorias — so na exibicao.
+ */
+console.log('\n22b. Orcamento: limite do mes que se ajusta ao gasto, e macrocategorias');
+{
+  // --- macrocategorias
+  const todas = MACROCATEGORIAS.flatMap((m) => [...m.subcategorias]);
+  igual('cada categoria aparece em exatamente uma macrocategoria', todas.length, new Set(todas).size);
+  const semMacro = CATEGORIAS.filter((c) => !todas.includes(c));
+  conferir('toda categoria de CATEGORIAS tem macrocategoria', semMacro.length === 0, semMacro.join(', '));
+  conferir('o mapa nao inventa categoria que nao existe', todas.every((c) => (CATEGORIAS as readonly string[]).includes(c)));
+  igual('Mercado e Alimentacao', macrocategoriaDe('Mercado'), 'Alimentação');
+  igual('Pets e Moradia', macrocategoriaDe('Pets'), 'Moradia');
+  igual('categoria digitada a mao cai em Outros', macrocategoriaDe('Dentista particular'), 'Outros');
+  igual('e a vazia tambem', macrocategoriaDe(''), 'Outros');
+
+  // --- limite do mes
+  igual('media mensal: teto / 12, para baixo', mediaMensal(1_000_000), 83_333);
+  igual('teto exato em 12', mediaMensal(1_200_000), 100_000);
+
+  const agora = T(2026, 11, 5);
+  const gastar = (categoria: string, mes: number, total: number, extra: Partial<Compra> = {}) =>
+    compra({ categoria, total, data: T(2026, mes, 10), ...extra });
+  const linha = (categoria: string, valorAnual: number) => ({ categoria, valorAnual, proposto: valorAnual, original: null });
+  const orcamento = {
+    ano: 2026,
+    linhas: [linha('Mercado', 1_200_000), linha('Lazer', 100_000), linha('Dentista particular', 60_000)],
+  };
+  const historico = [
+    gastar('Mercado', 1, 50_000),
+    gastar('Mercado', 2, 150_000),
+    gastar('Lazer', 3, 150_000),
+    gastar('Lazer', 4, 1_000),
+    gastar('Mercado', 11, 30_000),
+    gastar('Mercado', 5, 999_999, { excluidoEm: 1 }),
+    gastar('Comer fora', 11, 7_000),
+  ];
+  const mes = (n: number) => executarMes(historico, orcamento, `2026-${String(n).padStart(2, '0')}`, agora);
+  const mercado = (n: number) => mes(n).linhas.find((l) => l.categoria === 'Mercado')!;
+
+  igual('janeiro: o limite e a media', mercado(1).limiteDoMes, 100_000);
+  igual('e o ajuste e zero', mercado(1).ajuste, 0);
+  igual('gastou menos em janeiro, o limite de fevereiro sobe', mercado(2).limiteDoMes, Math.floor((1_200_000 - 50_000) / 11));
+  igual('e o ajuste diz quanto subiu', mercado(2).ajuste, mercado(2).limiteDoMes - 100_000);
+  igual('gastou mais que o limite em fevereiro, marco desce', mercado(3).limiteDoMes, Math.floor((1_200_000 - 200_000) / 10));
+  conferir('fevereiro pesou: marco tem limite menor que fevereiro', mercado(3).limiteDoMes < mercado(2).limiteDoMes);
+  igual('mes passado mostra o limite da epoca (nao muda com o que veio depois)', mercado(1).limiteDoMes, 100_000);
+  igual('novembro: o que sobrou do teto dividido por 2 meses', mercado(11).limiteDoMes, Math.floor((1_200_000 - 200_000) / 2));
+  igual('gasto de novembro', mercado(11).gastoNoMes, 30_000);
+  igual('novembro cabe', mercado(11).estado, 'cabe');
+  igual('dezembro (ainda nao chegou) repete o limite de hoje', mercado(12).limiteDoMes, mercado(11).limiteDoMes);
+  conferir('a compra excluida nao entra no gasto de maio', mercado(5).gastoNoMes === 0);
+
+  const lazer = (n: number) => mes(n).linhas.find((l) => l.categoria === 'Lazer')!;
+  igual('passou do teto do ano em marco: abril fica com limite 0', lazer(4).limiteDoMes, 0);
+  igual('gastar R$ 10 com limite 0 estoura', lazer(4).estado, 'estoura');
+  igual('e por quanto', lazer(4).estourou, 1_000);
+  igual('limite 0 sem gasto cabe', lazer(5).estado, 'cabe');
+  igual('marco estourou o proprio limite', lazer(3).estado, 'estoura');
+
+  // --- somas por macrocategoria
+  const novembro = mes(11);
+  const alimentacao = novembro.macros.find((m) => m.macro === 'Alimentação')!;
+  igual('o limite da macro e a soma das subcategorias', alimentacao.limite, mercado(11).limiteDoMes);
+  igual('e o gasto tambem', alimentacao.gasto, 30_000);
+  igual('Lazer cai em Lazer e estilo', novembro.macros.find((m) => m.macro === 'Lazer e estilo')!.linhas[0]!.categoria, 'Lazer');
+  igual('categoria digitada a mao vai para Outros', novembro.macros.find((m) => m.macro === 'Outros')!.linhas[0]!.categoria, 'Dentista particular');
+  igual('as macros seguem a ordem do mapa', novembro.macros.map((m) => m.macro).join(','), 'Alimentação,Lazer e estilo,Outros');
+  igual('o total do mes e a soma das macros', novembro.limite, novembro.macros.reduce((s, m) => s + m.limite, 0));
+  igual('categoria com gasto e sem teto fica fora do orcamento', novembro.fora.map((f) => f.categoria).join(','), 'Comer fora');
+  igual('e conta o gasto fora', novembro.gastoFora, 7_000);
+
+  // --- a visao anual agrupa pelos mesmos blocos
+  const anual = executar(historico, orcamento, '2026-11', agora);
+  const anualAlimentacao = anual.macros.find((m) => m.macro === 'Alimentação')!;
+  igual('anual: a macro soma o teto das subcategorias', anualAlimentacao.teto, 1_200_000);
+  igual('anual: e o gasto do ano', anualAlimentacao.gastoNoAno, 50_000 + 150_000 + 30_000);
+
+  // --- ano seguinte: nenhum gasto aconteceu, todo mes e a media
+  const proximo = { ano: 2027, linhas: [linha('Mercado', 1_200_000)] };
+  const doProximo = (n: number) =>
+    executarMes(historico, proximo, `2027-${String(n).padStart(2, '0')}`, agora).linhas[0]!.limiteDoMes;
+  igual('ano seguinte, janeiro: a media', doProximo(1), 100_000);
+  igual('ano seguinte, dezembro: a mesma media', doProximo(12), 100_000);
+
+  // --- gastar exatamente o limite todo mes fecha o ano no teto
+  const fim = T(2027, 12, 20);
+  const teto = { ano: 2027, linhas: [linha('Mercado', 1_000_000)] };
+  const gastos: Compra[] = [];
+  for (let n = 1; n <= 12; n += 1) {
+    const chave = `2027-${String(n).padStart(2, '0')}`;
+    const limite = executarMes(gastos, teto, chave, fim).linhas[0]!.limiteDoMes;
+    gastos.push(compra({ categoria: 'Mercado', total: limite, data: T(2027, n, 10) }));
+  }
+  igual(
+    'gastando o limite todo mes, a soma dos 12 e o teto',
+    gastos.reduce((s, c) => s + c.total, 0),
+    1_000_000,
+  );
+
+  // --- credito em 12x pesa o total na data da compra
+  const geladeira = [gastar('Mercado', 11, 120_000, { parcelas: 12, contaId: 'nu' })];
+  igual('credito em 12x: o gasto do mes e o total', executarMes(geladeira, orcamento, '2026-11', agora).linhas[0]!.gastoNoMes, 120_000);
+  igual('e dezembro nao recebe parcela', executarMes(geladeira, orcamento, '2026-12', agora).linhas[0]!.gastoNoMes, 0);
+
+  // --- soma por macro no rascunho
+  const rascunho = somaPorMacro([linha('Mercado', 100), linha('Comer fora', 50), linha('Pets', 7)]);
+  igual('rascunho: Alimentacao soma 150', rascunho.find((m) => m.macro === 'Alimentação')!.teto, 150);
+  igual('rascunho: Moradia soma 7', rascunho.find((m) => m.macro === 'Moradia')!.teto, 7);
+  igual('rascunho: sem bloco vazio', rascunho.length, 2);
 }
 
 console.log('');if (falhas > 0) {
