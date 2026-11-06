@@ -313,7 +313,7 @@ function fracaoRestanteDoMes(agora: number): number {
  * Divida: todas as parcelas sempre, porque nenhuma delas aparece no historico de
  * compras. Pagamento ja feito abate.
  */
-function comprometidoPorMes(dados: DadosFinanceiros, agora: number): Map<string, number> {
+export function comprometidoPorMes(dados: DadosFinanceiros, agora: number): Map<string, number> {
   const mapa = new Map<string, number>();
   const somar = (mes: string, valor: number) => {
     if (valor <= 0) return;

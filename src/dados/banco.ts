@@ -16,9 +16,11 @@ import Dexie, { type EntityTable } from 'dexie';
 import type {
   Compra,
   Conta,
+  Dicas,
   Divida,
   Item,
   Meta,
+  Orcamento,
   RegraCategoria,
   Renda,
   Transferencia,
@@ -40,6 +42,7 @@ export type DividaLocal = Divida & SoLocal;
 export type MetaLocal = Meta & SoLocal;
 export type TransferenciaLocal = Transferencia & SoLocal;
 export type RegraLocal = RegraCategoria & SoLocal;
+export type OrcamentoLocal = Orcamento & SoLocal;
 
 /**
  * O carimbo que TODA escrita precisa deixar.
@@ -83,6 +86,29 @@ export interface EntradaCatalogo {
   vezes: number;
 }
 
+/**
+ * A ultima analise de IA de um mes, guardada para nao sumir ao sair da tela.
+ *
+ * So no aparelho e nao sincroniza, como o catalogo: nao tem `pendente`, `versao`
+ * nem lapide, e por isso NAO usa `carimbo()` (que existe para a fila de envio).
+ * Refazer a analise substitui a linha do mes — nao ha historico.
+ *
+ * `comprasNoMes` e `totalNoMes` sao uma foto do mes na hora da analise: se o mes
+ * mudar depois, a tela avisa que a analise esta velha em vez de fingir que vale.
+ */
+export interface AnaliseSalva {
+  /** "2026-09". E a chave primaria. */
+  mes: string;
+  /** Ms de quando a analise foi gerada. */
+  geradaEm: number;
+  /** O modelo que a gerou, quando o servidor informou. */
+  modelo: string | null;
+  comprasNoMes: number;
+  /** Centavos. */
+  totalNoMes: number;
+  dicas: Dicas;
+}
+
 /** Chave/valor para o que nao merece tabela propria (cursor da sincronizacao). */
 export interface Config {
   chave: string;
@@ -98,7 +124,9 @@ export const banco = new Dexie('webapp-compras') as Dexie & {
   metas: EntityTable<MetaLocal, 'id'>;
   transferencias: EntityTable<TransferenciaLocal, 'id'>;
   regras: EntityTable<RegraLocal, 'id'>;
+  orcamentos: EntityTable<OrcamentoLocal, 'id'>;
   catalogo: EntityTable<EntradaCatalogo, 'chave'>;
+  analises: EntityTable<AnaliseSalva, 'mes'>;
   config: EntityTable<Config, 'chave'>;
 };
 
@@ -128,6 +156,26 @@ banco.version(2).stores({
   metas: 'id, pendente, ordem',
   transferencias: 'id, pendente, alvoId, competencia',
   regras: 'id, pendente, ordem',
+});
+
+/**
+ * v3: as analises de IA salvas, uma por mes.
+ *
+ * Aditivo, sem funcao de upgrade: nenhuma tabela antiga muda. Nao sincroniza,
+ * entao nao precisa de `pendente` indexado.
+ */
+banco.version(3).stores({
+  analises: 'mes',
+});
+
+/**
+ * v4: o orcamento anual, um registro por ano.
+ *
+ * Aditivo e sem funcao de upgrade, como a v2 e a v3. `pendente` indexado: sem
+ * isso o orcamento nunca entraria na fila de envio (ver o topo do arquivo).
+ */
+banco.version(4).stores({
+  orcamentos: 'id, pendente, ano',
 });
 
 export async function lerConfig<T>(chave: string, padrao: T): Promise<T> {

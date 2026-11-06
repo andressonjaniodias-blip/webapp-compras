@@ -17,9 +17,11 @@ import {
   carimbo,
   gravarConfig,
   lerConfig,
+  type AnaliseSalva,
   type ContaLocal,
   type DividaLocal,
   type MetaLocal,
+  type OrcamentoLocal,
   type RegraLocal,
   type RendaLocal,
   type TransferenciaLocal,
@@ -34,6 +36,7 @@ import {
   type Conta,
   type Divida,
   type Meta,
+  type Orcamento,
   type RegraCategoria,
   type Renda,
   type Transferencia,
@@ -353,6 +356,111 @@ export async function atualizarRegra(
 
 export async function excluirRegra(id: string): Promise<void> {
   await banco.regras.update(id, { excluidoEm: Date.now(), ...carimbo() });
+}
+
+// --------------------------------------------------------------- orcamento
+
+/** Um registro por ano, com id deterministico: dois aparelhos nao duplicam. */
+export function idDoOrcamento(ano: number): string {
+  return `orcamento:${ano}`;
+}
+
+export async function listarOrcamentos(): Promise<OrcamentoLocal[]> {
+  const todos = await banco.orcamentos.toArray();
+  return todos.filter(naoExcluido).sort((a, b) => a.ano - b.ano);
+}
+
+/**
+ * Cria o orcamento do ano como RASCUNHO, ou o recria se estava na lapide.
+ *
+ * Mantem a `versao` que o servidor ja deu a este id: sobrescreve-la com 0 faria
+ * o registro parecer nunca sincronizado.
+ */
+export async function criarOrcamento(
+  ano: number,
+  linhas: Orcamento['linhas'],
+  mesesDeBase: number,
+): Promise<string> {
+  const id = idDoOrcamento(ano);
+  const anterior = await banco.orcamentos.get(id);
+  const orcamento: OrcamentoLocal = {
+    id,
+    ano,
+    situacao: 'rascunho',
+    confirmadoEm: 0,
+    mesesDeBase,
+    marcoDispensado: 0,
+    linhas,
+    parecer: null,
+    ...novo,
+    versao: anterior?.versao ?? 0,
+    ...carimbo(),
+  };
+  await banco.orcamentos.put(orcamento);
+  return id;
+}
+
+export async function atualizarOrcamento(
+  id: string,
+  mudancas: Partial<Omit<Orcamento, 'id' | 'ano'>>,
+): Promise<void> {
+  await banco.orcamentos.update(id, { ...mudancas, ...carimbo() });
+}
+
+/**
+ * Altera o orcamento a partir do que esta GRAVADO, dentro de uma transacao.
+ *
+ * Ler, mudar e gravar fora dela deixaria duas edicoes seguidas (um teto e depois
+ * outro) partirem da mesma copia antiga: a segunda gravaria por cima da primeira e
+ * o teto digitado sumiria sem erro. As linhas moram todas dentro de um registro
+ * so, entao toda edicao de linha tem de passar por aqui.
+ */
+export async function alterarOrcamento(
+  id: string,
+  alterar: (atual: OrcamentoLocal) => Partial<Omit<Orcamento, 'id' | 'ano'>>,
+): Promise<void> {
+  await banco.transaction('rw', banco.orcamentos, async () => {
+    const atual = await banco.orcamentos.get(id);
+    if (!atual || !naoExcluido(atual)) return;
+    await banco.orcamentos.update(id, { ...alterar(atual), ...carimbo() });
+  });
+}
+
+/**
+ * Confirma o orcamento: guarda o teto de cada linha como `original`, para a
+ * tela poder dizer "ajustado de R$ X" quando o usuario mexer depois.
+ */
+export async function confirmarOrcamento(id: string): Promise<void> {
+  const atual = await banco.orcamentos.get(id);
+  if (!atual || !naoExcluido(atual)) return;
+  await banco.orcamentos.update(id, {
+    situacao: 'confirmado',
+    confirmadoEm: Date.now(),
+    linhas: atual.linhas.map((linha) => ({ ...linha, original: linha.valorAnual })),
+    ...carimbo(),
+  });
+}
+
+export async function excluirOrcamento(id: string): Promise<void> {
+  await banco.orcamentos.update(id, { excluidoEm: Date.now(), ...carimbo() });
+}
+
+// ------------------------------------------------------------ analises salvas
+
+/**
+ * Todas as analises guardadas (uma por mes, poucas linhas).
+ *
+ * A tela as le de uma vez, e nao por mes, porque o mes que ela mostra so e
+ * conhecido depois de carregar as compras — e um hook nao pode vir depois do
+ * `return` de carregamento.
+ */
+export function listarAnalises(): Promise<AnaliseSalva[]> {
+  return banco.analises.toArray();
+}
+
+/** Grava a analise do mes, substituindo a anterior: so a mais recente fica. */
+export async function salvarAnaliseDoMes(analise: AnaliseSalva): Promise<void> {
+  await banco.analises.put(analise);
 }
 
 // ------------------------------------------------------------ preferencias

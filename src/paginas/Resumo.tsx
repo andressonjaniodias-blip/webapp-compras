@@ -24,6 +24,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { listarCompras, listarTodosOsItens } from '../dados/compras';
 import { useFinanceiro } from '../dados/financeiro';
+import { listarAnalises, salvarAnaliseDoMes } from '../dados/financas';
 import { mesesComMovimento, resumirMes, type FatiaResumo } from '../lib/resumo';
 import {
   compararNoMesmoPeriodo,
@@ -40,8 +41,8 @@ import {
 import { estimarGastoCorrente } from '../../compartilhado/previsao';
 import { limitesDo } from '../../compartilhado/planos';
 import { formatarReais } from '../lib/dinheiro';
-import { formatarData, mesAtual, nomeMes } from '../lib/datas';
-import { pedirDicas, type Dicas } from '../dados/api';
+import { formatarData, formatarDataHora, mesAtual, nomeMes } from '../lib/datas';
+import { pedirDicas } from '../dados/api';
 import { useApp } from '../estado';
 import { NavegadorDeMes } from '../componentes/NavegadorDeMes';
 import { BarraDeProgresso } from '../componentes/graficos/BarraDeProgresso';
@@ -62,13 +63,13 @@ function apenasMes(chave: string): string {
 export function Resumo() {
   const navegar = useNavigate();
   const voltar = useVoltar('/');
-  const { iaLigada, offline, plano } = useApp();
+  const { iaLigada, modeloIa, offline, plano } = useApp();
   const compras = useLiveQuery(listarCompras, [], undefined);
   const itens = useLiveQuery(listarTodosOsItens, [], undefined);
+  const analisesSalvas = useLiveQuery(listarAnalises, [], undefined);
   const financeiro = useFinanceiro();
 
   const [mesEscolhido, setMesEscolhido] = useState<string | null>(null);
-  const [dicas, setDicas] = useState<Dicas | null>(null);
   const [analisando, setAnalisando] = useState(false);
   const [erroDicas, setErroDicas] = useState<string | null>(null);
 
@@ -117,18 +118,31 @@ export function Resumo() {
       ? gastoComDividasNoMes(extratoDeDividas(financeiro.dados, agora), mes)
       : { total: 0, parcelas: 0 };
 
+  // A analise salva do mes escolhido. Ela continua na tela enquanto a nova e
+  // pedida: se o pedido falhar, a antiga nao se perde.
+  const analise = analisesSalvas?.find((a) => a.mes === mes) ?? null;
+  const dicas = analise?.dicas ?? null;
+  const analiseVelha =
+    analise !== null && (analise.comprasNoMes !== resumo.quantidade || analise.totalNoMes !== resumo.total);
+
   function escolherMes(destino: string) {
     setMesEscolhido(destino);
-    setDicas(null);
     setErroDicas(null);
   }
 
   async function analisar() {
     setAnalisando(true);
     setErroDicas(null);
-    setDicas(null);
     try {
-      setDicas(await pedirDicas(mes));
+      const novas = await pedirDicas(mes);
+      await salvarAnaliseDoMes({
+        mes,
+        geradaEm: Date.now(),
+        modelo: modeloIa,
+        comprasNoMes: resumo.quantidade,
+        totalNoMes: resumo.total,
+        dicas: novas,
+      });
     } catch (falha) {
       setErroDicas(falha instanceof Error ? falha.message : 'Não foi possível analisar.');
     } finally {
@@ -328,6 +342,11 @@ export function Resumo() {
         />
       )}
 
+      <h2 className="secao-titulo">Orçamento do ano</h2>
+      <button type="button" className="botao botao-largo" onClick={() => navegar('/orcamento')}>
+        Planejar o orçamento anual
+      </button>
+
       <h2 className="secao-titulo">Dicas de economia</h2>
 
       {!limites.ia && <ExemploDeAnalise />}
@@ -347,7 +366,9 @@ export function Resumo() {
             disabled={analisando || resumo.quantidade === 0 || offline}
             onClick={analisar}
           >
-            {analisando ? 'Analisando o mês…' : 'Analisar ' + apenasMes(mes)}
+            {analisando
+              ? 'Analisando o mês…'
+              : (analise ? 'Refazer a análise de ' : 'Analisar ') + apenasMes(mes)}
           </button>
           {offline && <p className="dica">Precisa de internet para analisar.</p>}
         </>
@@ -355,8 +376,15 @@ export function Resumo() {
 
       {erroDicas && <p className="aviso aviso-erro" style={{ marginTop: 12 }}>{erroDicas}</p>}
 
-      {dicas && (
+      {analise && dicas && (
         <div style={{ marginTop: 12 }}>
+          <p className="dica">Análise feita em {formatarDataHora(analise.geradaEm)}.</p>
+          {analiseVelha && (
+            <p className="aviso">
+              As compras deste mês mudaram desde esta análise. Refaça para atualizar.
+            </p>
+          )}
+
           <div className="cartao">{dicas.resumo}</div>
 
           {dicas.achados.map((achado, indiceAchado) => (

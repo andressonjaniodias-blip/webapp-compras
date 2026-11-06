@@ -95,6 +95,17 @@ import type {
   Renda,
   Transferencia,
 } from '../compartilhado/tipos';
+import {
+  atualizarProposta,
+  avisoDeAtualizacao,
+  estadoDoLimite,
+  executar,
+  folgaDoOrcamento,
+  marcoAtingido,
+  mesesDeUso,
+  orcamentoLiberado,
+  propor,
+} from '../compartilhado/orcamento';
 
 let falhas = 0;
 
@@ -2358,6 +2369,202 @@ console.log('\n21. Parcela de cartao na lista de gastos: o mes da fatura, sem co
   igual('sem cartao, nenhuma linha (Principio 0)', extratoDeCartoes(semCartao, agora).length, 0);
   const cartaoApagado = dados({ contas: [{ ...nu, excluidoEm: 1 }], compras: [notebook] });
   igual('cartao excluido nao gera linha', extratoDeCartoes(cartaoApagado, agora).length, 0);
+}
+
+// ====================================================== 22. orcamento anual
+
+/*
+ * O orcamento e um teto por categoria para o ano. O que esta secao protege:
+ *  - so abre com 3 meses COMPLETOS de uso, e avisa em 6 e 12 sem mexer em teto;
+ *  - o gasto da categoria e `compra.total` inteiro na data da compra (credito 12x
+ *    pesa o total no mes da compra, nunca a parcela), sem excluidas;
+ *  - atualizar a proposta nunca troca o teto que o usuario confirmou;
+ *  - o envelope e `null` sem entrada, e deixa o cartao de fora (invariante 10).
+ */
+console.log('\n22. Orcamento anual: tempo de uso, proposta, execucao e envelope');
+{
+  const agora = T(2026, 11, 5);
+  const mercado = (mes: number, total = 100000) =>
+    compra({ categoria: 'Mercado', total, data: T(2026, mes, 10) });
+
+  // --- tempo de uso
+  const doisMeses = [mercado(8), mercado(9)];
+  igual('dois meses completos de uso', mesesDeUso(doisMeses, agora), 2);
+  conferir('com dois meses o recurso ainda nao abre', !orcamentoLiberado(mesesDeUso(doisMeses, agora)));
+  const tresMeses = [mercado(8), mercado(9), mercado(10)];
+  igual('tres meses completos de uso', mesesDeUso(tresMeses, agora), 3);
+  conferir('com tres meses o recurso abre', orcamentoLiberado(mesesDeUso(tresMeses, agora)));
+  igual('o mes corrente nao conta', mesesDeUso([mercado(11)], agora), 0);
+  igual(
+    'duas compras no mesmo mes contam uma vez',
+    mesesDeUso([mercado(9), mercado(9, 500)], agora),
+    1,
+  );
+  igual(
+    'compra excluida nao conta',
+    mesesDeUso([compra({ data: T(2026, 7, 3), excluidoEm: 1 })], agora),
+    0,
+  );
+  igual('mes sem compra nao conta (agosto e outubro, sem setembro)', mesesDeUso([mercado(8), mercado(10)], agora), 2);
+
+  // --- marcos e aviso
+  igual('2 meses: abaixo do minimo', marcoAtingido(2), 0);
+  igual('3 meses: marco 3', marcoAtingido(3), 3);
+  igual('5 meses: ainda marco 3', marcoAtingido(5), 3);
+  igual('6 meses: marco 6', marcoAtingido(6), 6);
+  igual('11 meses: ainda marco 6', marcoAtingido(11), 6);
+  igual('12 meses: marco 12', marcoAtingido(12), 12);
+
+  const orc = (mesesDeBase: number, marcoDispensado = 0) => ({ mesesDeBase, marcoDispensado });
+  igual('feito com 3, agora 5: sem aviso', avisoDeAtualizacao(orc(3), 5), null);
+  igual('feito com 3, agora 6: avisa 6', avisoDeAtualizacao(orc(3), 6), 6);
+  igual('feito com 3, agora 12: avisa 12', avisoDeAtualizacao(orc(3), 12), 12);
+  igual('feito com 6, agora 6: nao repete o marco da geracao', avisoDeAtualizacao(orc(6), 6), null);
+  igual('feito com 6, agora 12: avisa 12', avisoDeAtualizacao(orc(6), 12), 12);
+  igual('feito com 12, agora 12: sem aviso', avisoDeAtualizacao(orc(12), 12), null);
+  igual('dispensou o 6: nao volta aos 6', avisoDeAtualizacao(orc(3, 6), 6), null);
+  igual('dispensou o 6: volta aos 12', avisoDeAtualizacao(orc(3, 6), 12), 12);
+  igual('dispensou o 12: nunca mais', avisoDeAtualizacao(orc(3, 12), 12), null);
+
+  // --- proposta
+  const casa12x = compra({ categoria: 'Casa', total: 120000, parcelas: 12, contaId: 'nu', data: T(2026, 10, 20) });
+  const presentes = compra({ categoria: 'Presentes', total: 30000, data: T(2026, 10, 25) });
+  const dentista = compra({ categoria: 'Dentista particular', total: 6000, data: T(2026, 10, 2) });
+  const apagada = compra({ categoria: 'Mercado', total: 999999, data: T(2026, 9, 3), excluidoEm: 1 });
+  const novembro = compra({ categoria: 'Mercado', total: 20000, data: T(2026, 11, 2) });
+  const historico = [...tresMeses, casa12x, presentes, dentista, apagada, novembro];
+  const linhaDe = (linhas: { categoria: string; valorAnual: number }[], categoria: string) =>
+    linhas.find((l) => l.categoria === categoria)?.valorAnual;
+
+  const futuro = propor(historico, 2027, agora);
+  igual('a base usa os meses completos que tiveram compra', futuro.mesesDeHistorico, 3);
+  igual('ano futuro: media mensal x 12 (R$ 1.000 x 12)', linhaDe(futuro.linhas, 'Mercado'), 1_200_000);
+  igual('categoria eventual nao some: R$ 300 em 3 meses, x 12', linhaDe(futuro.linhas, 'Presentes'), 120_000);
+  igual(
+    'credito em 12x pesa o total na data da compra, nao a parcela',
+    linhaDe(futuro.linhas, 'Casa'),
+    480_000,
+  );
+  igual('categoria fora de CATEGORIAS entra', linhaDe(futuro.linhas, 'Dentista particular'), 24_000);
+  igual('o proposto comeca igual ao teto', futuro.linhas[0]!.proposto, futuro.linhas[0]!.valorAnual);
+  igual('e o original comeca vazio', futuro.linhas[0]!.original, null);
+  conferir('a compra excluida nao entra na media', linhaDe(futuro.linhas, 'Mercado') === 1_200_000);
+  igual(
+    'ordenada do maior teto para o menor',
+    futuro.linhas.map((l) => l.categoria).join(','),
+    'Mercado,Casa,Presentes,Dentista particular',
+  );
+
+  const corrente = propor(historico, 2026, agora);
+  igual('ano corrente: realizado + media x 2 meses que faltam', linhaDe(corrente.linhas, 'Mercado'), 300_000 + 2 * 100_000);
+  igual('eventual no ano corrente', linhaDe(corrente.linhas, 'Presentes'), 30_000 + 2 * 10_000);
+  igual('ano passado nao tem o que propor', propor(historico, 2025, agora).linhas.length, 0);
+  igual('sem compra nenhuma, nao ha proposta (Principio 0)', propor([], 2027, agora).linhas.length, 0);
+
+  // --- atualizar a proposta nao mexe em teto
+  const confirmadas = [
+    { categoria: 'Mercado', valorAnual: 999, proposto: 1, original: 888 },
+    { categoria: 'Lazer', valorAnual: 5000, proposto: 5000, original: 5000 },
+  ];
+  const atualizada = atualizarProposta(confirmadas, historico, 2027, agora);
+  igual('o teto continua o que o usuario confirmou', atualizada.linhas[0]!.valorAnual, 999);
+  igual('o original continua intacto', atualizada.linhas[0]!.original, 888);
+  igual('o proposto passa a ser a nova proposta', atualizada.linhas[0]!.proposto, 1_200_000);
+  igual('categoria que sumiu do historico fica com proposto 0', atualizada.linhas[1]!.proposto, 0);
+  igual('e o teto dela segue igual', atualizada.linhas[1]!.valorAnual, 5000);
+  igual(
+    'categorias novas vem a parte, sem entrar sozinhas',
+    atualizada.novas.map((l) => l.categoria).sort().join(','),
+    'Casa,Dentista particular,Presentes',
+  );
+
+  // --- execucao
+  const orcamento2026 = {
+    ano: 2026,
+    linhas: [
+      { categoria: 'Mercado', valorAnual: 500_000, proposto: 500_000, original: 500_000 },
+      { categoria: 'Presentes', valorAnual: 33_000, proposto: 33_000, original: 40_000 },
+      { categoria: 'Casa', valorAnual: 100_000, proposto: 100_000, original: null },
+    ],
+  };
+  const exec = executar(historico, orcamento2026, '2026-11', agora);
+  const mercadoExec = exec.linhas.find((l) => l.categoria === 'Mercado')!;
+  igual('gasto no ano: tres meses + o corrente, sem a excluida', mercadoExec.gastoNoAno, 320_000);
+  igual('gasto so do mes de referencia', mercadoExec.gastoNoMes, 20_000);
+  igual('quanto ainda cabe', mercadoExec.restante, 180_000);
+  igual('meses que faltam: novembro e dezembro', exec.mesesQueFaltam, 2);
+  igual('ritmo por mes para chegar no teto', mercadoExec.ritmoPorMes, 90_000);
+  igual('64% do teto: cabe', mercadoExec.estado, 'cabe');
+  igual('presentes a 91% do teto: aperta', exec.linhas.find((l) => l.categoria === 'Presentes')!.estado, 'aperta');
+  igual('ajustado de 40 mil para 33 mil: mostra o original', exec.linhas.find((l) => l.categoria === 'Presentes')!.ajustadoDe, 40_000);
+  igual('sem ajuste, nao ha "ajustado de"', mercadoExec.ajustadoDe, null);
+  const casaExec = exec.linhas.find((l) => l.categoria === 'Casa')!;
+  igual('credito 12x: o gasto da categoria e o total da compra', casaExec.gastoNoAno, 120_000);
+  igual('estourou o teto', casaExec.estado, 'estoura');
+  igual('e por quanto', casaExec.estourou, 20_000);
+  igual('estourado nao tem ritmo', casaExec.ritmoPorMes, 0);
+  igual('categoria sem teto vai para "fora do orcamento"', exec.fora.map((f) => f.categoria).join(','), 'Dentista particular');
+  igual('o total fora', exec.gastoForaNoAno, 6_000);
+  igual(
+    'os totais das linhas fecham',
+    exec.gastoNoAno,
+    exec.linhas.reduce((s, l) => s + l.gastoNoAno, 0),
+  );
+  igual('ano futuro: 12 meses pela frente', executar([], { ano: 2027, linhas: [] }, '2027-01', agora).mesesQueFaltam, 12);
+  igual('ano passado: nada pela frente', executar([], { ano: 2025, linhas: [] }, '2025-12', agora).mesesQueFaltam, 0);
+
+  igual('limite exato: ainda nao estourou, mas aperta', estadoDoLimite(100, 100), 'aperta');
+  igual('um acima do teto: estoura', estadoDoLimite(101, 100), 'estoura');
+  igual('85% exatos: aperta', estadoDoLimite(85, 100), 'aperta');
+  igual('84%: cabe', estadoDoLimite(84, 100), 'cabe');
+  igual('teto zero sem gasto: cabe', estadoDoLimite(0, 0), 'cabe');
+  igual('teto zero com gasto: estoura', estadoDoLimite(1, 0), 'estoura');
+
+  // --- envelope
+  const orcamento2027 = {
+    ano: 2027,
+    linhas: [{ categoria: 'Mercado', valorAnual: 1_200_000, proposto: 1_200_000, original: null }],
+  };
+  igual(
+    'sem entrada lancada nao ha envelope (invariante 22)',
+    folgaDoOrcamento(dados({ compras: historico }), orcamento2027, agora),
+    null,
+  );
+
+  const nu = conta({ id: 'nu', apelido: 'Nubank', tipo: 'credito' });
+  const emprestimo = divida({ valorTotal: 1_200_000, parcelas: 24, primeiraEm: T(2026, 10, 10) });
+  const meta: Meta = {
+    id: 'm1', descricao: 'Viagem', valorAlvo: 5_000_000, guardado: 0,
+    reservaMensal: 50_000, prazoEm: null, ordem: 0, atualizadoEm: 0, excluidoEm: null,
+  };
+  const comRenda = dados({
+    contas: [nu],
+    compras: historico,
+    rendas: salarios('2026-08', '2026-10', 5, 500_000),
+    dividas: [emprestimo],
+    metas: [meta],
+  });
+  const folga = folgaDoOrcamento(comRenda, orcamento2027, agora)!;
+  igual('entrada: media dos meses x 12', folga.entradas, 6_000_000);
+  igual('tetos de um ano futuro: o teto inteiro', folga.tetos, 1_200_000);
+  igual('dividas do ano: 12 parcelas de R$ 500', folga.dividas, 600_000);
+  igual('metas: reserva x 12', folga.metas, 600_000);
+  igual('a folga fecha a conta', folga.folga, 6_000_000 - 1_200_000 - 600_000 - 600_000);
+  igual(
+    'o cartao fica fora: a compra em 12x que cai em 2027 nao soma',
+    folgaDoOrcamento({ ...comRenda, dividas: [], metas: [] }, orcamento2027, agora)!.dividas,
+    0,
+  );
+  igual('entrada fraca com poucos meses', folgaDoOrcamento(
+    dados({ compras: historico, rendas: salarios('2026-10', '2026-10', 5, 500_000) }),
+    orcamento2027,
+    agora,
+  )!.entradaFraca, true);
+  igual(
+    'entrada digitada vale mesmo sem lancamento',
+    folgaDoOrcamento(dados({ compras: historico }), orcamento2027, agora, 400_000)!.entradas,
+    4_800_000,
+  );
 }
 
 console.log('');if (falhas > 0) {

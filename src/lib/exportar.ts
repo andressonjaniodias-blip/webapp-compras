@@ -23,6 +23,7 @@ import {
   type DividaLocal,
   type ItemLocal,
   type MetaLocal,
+  type OrcamentoLocal,
   type RegraLocal,
   type RendaLocal,
   type TransferenciaLocal,
@@ -456,6 +457,7 @@ export interface Backup {
   metas?: MetaLocal[];
   transferencias?: TransferenciaLocal[];
   regras?: RegraLocal[];
+  orcamentos?: OrcamentoLocal[];
 }
 
 /**
@@ -478,6 +480,7 @@ export async function exportarBackup(nomeArquivo = 'backup-compras.json'): Promi
     metas: await banco.metas.toArray(),
     transferencias: await banco.transferencias.toArray(),
     regras: await banco.regras.toArray(),
+    orcamentos: await banco.orcamentos.toArray(),
   };
 
   baixar(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), nomeArquivo);
@@ -512,7 +515,7 @@ export async function importarBackup(texto: string): Promise<{ compras: number; 
   await banco.transaction(
     'rw',
     [banco.compras, banco.itens, banco.contas, banco.rendas, banco.dividas, banco.metas,
-     banco.transferencias, banco.regras],
+     banco.transferencias, banco.regras, banco.orcamentos],
     async () => {
       await banco.compras.bulkPut(compras);
       await banco.itens.bulkPut(itens);
@@ -522,6 +525,7 @@ export async function importarBackup(texto: string): Promise<{ compras: number; 
       await banco.metas.bulkPut(pendente(dados.metas));
       await banco.transferencias.bulkPut(pendente(dados.transferencias));
       await banco.regras.bulkPut(pendente(dados.regras));
+      await banco.orcamentos.bulkPut(pendente(dados.orcamentos));
     },
   );
 

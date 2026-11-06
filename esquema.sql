@@ -161,6 +161,22 @@ CREATE TABLE IF NOT EXISTS regras (
   versao        BIGINT  NOT NULL
 );
 
+-- O orcamento anual: um registro por ano, com as linhas (teto por categoria) e o
+-- parecer da IA como JSON em TEXT. Sincroniza porque o teto e intencao do usuario.
+CREATE TABLE IF NOT EXISTS orcamentos (
+  id               TEXT PRIMARY KEY,
+  ano              INTEGER NOT NULL DEFAULT 0,
+  situacao         TEXT    NOT NULL DEFAULT 'rascunho',
+  confirmado_em    BIGINT  NOT NULL DEFAULT 0,
+  meses_de_base    INTEGER NOT NULL DEFAULT 0,
+  marco_dispensado INTEGER NOT NULL DEFAULT 0,
+  linhas           TEXT    NOT NULL DEFAULT '[]',
+  parecer          TEXT    NOT NULL DEFAULT '',
+  atualizado_em    BIGINT  NOT NULL,
+  excluido_em      BIGINT,
+  versao           BIGINT  NOT NULL
+);
+
 -- Os indices que sustentam o pull: "tudo que mudou depois do cursor".
 CREATE INDEX IF NOT EXISTS idx_compras_versao        ON compras (versao);
 CREATE INDEX IF NOT EXISTS idx_itens_versao          ON itens (versao);
@@ -170,6 +186,7 @@ CREATE INDEX IF NOT EXISTS idx_dividas_versao        ON dividas (versao);
 CREATE INDEX IF NOT EXISTS idx_metas_versao          ON metas (versao);
 CREATE INDEX IF NOT EXISTS idx_transferencias_versao ON transferencias (versao);
 CREATE INDEX IF NOT EXISTS idx_regras_versao         ON regras (versao);
+CREATE INDEX IF NOT EXISTS idx_orcamentos_versao     ON orcamentos (versao);
 
 CREATE INDEX IF NOT EXISTS idx_itens_compra ON itens (compra_id);
 

@@ -12,6 +12,12 @@
  */
 
 import type { Plano } from '../../compartilhado/planos';
+import type {
+  Achado,
+  Dicas,
+  LinhaOrcamento,
+  ParecerOrcamento,
+} from '../../compartilhado/tipos';
 
 const TEMPO_LIMITE = 90_000;
 
@@ -109,22 +115,24 @@ export function sair(): Promise<{ ok: true }> {
   return chamarApi<{ ok: true }>('/sessao', { method: 'DELETE' });
 }
 
-export interface Achado {
-  titulo: string;
-  detalhe: string;
-  economiaEstimadaCentavos: number | null;
-}
-
-export interface Dicas {
-  resumo: string;
-  achados: Achado[];
-  sugestoes: string[];
-  previsao: string;
-  metas: string;
-}
+export type { Achado, Dicas };
 
 export function pedirDicas(mes: string): Promise<Dicas> {
   return chamarApi<Dicas>('/dicas', { method: 'POST', body: JSON.stringify({ mes }) });
+}
+
+/**
+ * O parecer da IA sobre as linhas do orcamento. As linhas vao no corpo porque o
+ * rascunho pode ainda nao ter subido; nada e aplicado aqui, quem aplica e a tela.
+ */
+export function pedirParecerDoOrcamento(
+  ano: number,
+  linhas: LinhaOrcamento[],
+): Promise<ParecerOrcamento> {
+  return chamarApi<ParecerOrcamento>('/orcamento/parecer', {
+    method: 'POST',
+    body: JSON.stringify({ ano, linhas }),
+  });
 }
 
 export interface RegraProposta {

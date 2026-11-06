@@ -174,6 +174,20 @@ Rode as três antes de dar qualquer mudança por concluída.
     muda e pagar menos continua sendo pagamento parcial (invariante 16).
     `valorTotal` é só o valor inicial nessas dívidas: progresso e "quanto falta"
     saem de `falta.previsto` e `falta.restante`, não dele.
+24. **O orçamento anual é teto por categoria, e todo número dele vem de
+    `compartilhado/orcamento.ts`.** Gasto da categoria = `compra.total` inteiro
+    na `compra.data`, sem excluídas: compra no crédito pesa na data da compra, e
+    fatura, parcela de dívida e transferência nunca entram (invariante 10). Só
+    abre com `MESES_MINIMOS` (3) meses *completos* com compra; antes disso não há
+    proposta, teto nem número (Princípio 0). Aos 6 e 12 meses de uso o app avisa
+    (`avisoDeAtualizacao`), mas `atualizarProposta` só troca o `proposto`: **o
+    teto é decisão do usuário e nunca muda sozinho.** A IA (`/api/orcamento/parecer`)
+    comenta e sugere, não grava teto. O envelope `folgaDoOrcamento` é `null` sem
+    base de entrada (invariante 22) e deixa o cartão de fora de propósito. O
+    orçamento é um registro por ano (`id = orcamento:<ano>`) com as linhas em
+    JSON; toda edição de linha passa por `alterarOrcamento` (transação), senão
+    duas edições seguidas se sobrescrevem. Ainda não alimenta `projetar`. A
+    análise de IA do mês (`analises`) é o oposto: só no aparelho, não sincroniza.
 
 ## Convenções
 

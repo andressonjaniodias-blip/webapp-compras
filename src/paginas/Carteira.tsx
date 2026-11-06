@@ -465,6 +465,9 @@ export function Carteira() {
           <button type="button" className="botao botao-largo" onClick={() => navegar('/metas')}>
             Metas{dados.metas.length > 0 ? ` (${dados.metas.length})` : ''}
           </button>
+          <button type="button" className="botao botao-largo" onClick={() => navegar('/orcamento')}>
+            Orçamento anual
+          </button>
         </div>
       </div>
     </div>

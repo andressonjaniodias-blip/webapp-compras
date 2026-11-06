@@ -16,8 +16,8 @@
  * praticamente nao acontece, e resolver de verdade (merge campo a campo ou
  * CRDT) custaria muito mais do que o problema vale aqui.
  *
- * As oito tabelas sao percorridas a partir de uma lista, e nao copiadas oito
- * vezes: com copia, a nona tabela seria esquecida em um dos laços e o sintoma
+ * As nove tabelas sao percorridas a partir de uma lista, e nao copiadas nove
+ * vezes: com copia, a decima tabela seria esquecida em um dos laços e o sintoma
  * seria "os cartoes nao sobem", semanas depois.
  */
 
@@ -44,6 +44,7 @@ const TABELAS = [
   'metas',
   'transferencias',
   'regras',
+  'orcamentos',
 ] as const;
 
 type NomeTabela = (typeof TABELAS)[number];

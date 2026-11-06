@@ -12,7 +12,7 @@
  * `jsonb_to_recordset`. A alternativa — um INSERT por registro — custaria uma
  * ida e volta HTTP por item, e uma compra de supermercado tem trinta.
  *
- * Sobre a TABELA DE TABELAS logo abaixo: com oito tabelas sincronizadas, oito
+ * Sobre a TABELA DE TABELAS logo abaixo: com nove tabelas sincronizadas, nove
  * copias do mesmo UPSERT escrito a mao divergiriam na primeira coluna nova que
  * alguem esquecesse de acrescentar em uma delas. Descrever cada tabela uma vez e
  * gerar o SQL a partir da descricao torna esse erro impossivel — e o mapeamento
@@ -27,6 +27,7 @@ import type {
   EnvioSincronizacao,
   Item,
   Meta,
+  Orcamento,
   Renda,
   RegraCategoria,
   RespostaSincronizacao,
@@ -397,6 +398,62 @@ const TABELA_REGRAS: Tabela<RegraCategoria> = {
   }),
 };
 
+/** Le uma coluna que guarda JSON em texto. Valor ilegivel vira `padrao`: nunca derruba o pull. */
+function jsonDe<T>(valor: unknown, padrao: T): T {
+  if (typeof valor !== 'string' || valor === '') return padrao;
+  try {
+    return JSON.parse(valor) as T;
+  } catch {
+    return padrao;
+  }
+}
+
+/**
+ * O orcamento anual: um registro por ano. As linhas e o parecer da IA viajam como
+ * JSON em coluna de TEXT — descreve-las em colunas proprias exigiria uma segunda
+ * tabela sincronizada para uma lista que sempre e lida e gravada junto.
+ */
+const TABELA_ORCAMENTOS: Tabela<Orcamento> = {
+  nome: 'orcamentos',
+  colunas: [
+    ['id', 'text'],
+    ['ano', 'int'],
+    ['situacao', 'text'],
+    ['confirmado_em', 'bigint'],
+    ['meses_de_base', 'int'],
+    ['marco_dispensado', 'int'],
+    ['linhas', 'text'],
+    ['parecer', 'text'],
+    ['atualizado_em', 'bigint'],
+    ['excluido_em', 'bigint'],
+  ],
+  paraBanco: (o) => ({
+    id: o.id,
+    ano: o.ano ?? 0,
+    situacao: o.situacao ?? 'rascunho',
+    confirmado_em: o.confirmadoEm ?? 0,
+    meses_de_base: o.mesesDeBase ?? 0,
+    marco_dispensado: o.marcoDispensado ?? 0,
+    linhas: JSON.stringify(o.linhas ?? []),
+    parecer: o.parecer ? JSON.stringify(o.parecer) : '',
+    atualizado_em: o.atualizadoEm,
+    excluido_em: o.excluidoEm,
+  }),
+  doBanco: (l) => ({
+    id: texto(l.id),
+    ano: numero(l.ano),
+    situacao: texto(l.situacao, 'rascunho') === 'confirmado' ? 'confirmado' : 'rascunho',
+    confirmadoEm: numero(l.confirmado_em),
+    mesesDeBase: numero(l.meses_de_base),
+    marcoDispensado: numero(l.marco_dispensado),
+    linhas: jsonDe<Orcamento['linhas']>(l.linhas, []),
+    parecer: jsonDe<Orcamento['parecer']>(l.parecer, null),
+    atualizadoEm: numero(l.atualizado_em),
+    excluidoEm: numeroOuNulo(l.excluido_em),
+    versao: numero(l.versao),
+  }),
+};
+
 /**
  * Compras ANTES de itens, e contas antes de tudo que aponta para elas: se a
  * rodada cair no meio, e melhor existir a referencia sem o dependente do que o
@@ -412,6 +469,7 @@ const TABELAS = [
   TABELA_METAS,
   TABELA_TRANSFERENCIAS,
   TABELA_REGRAS,
+  TABELA_ORCAMENTOS,
 ] as const;
 
 /**
@@ -510,6 +568,7 @@ async function rodarSincronizacao(envio: EnvioSincronizacao): Promise<RespostaSi
     metas: envio.metas ?? [],
     transferencias: envio.transferencias ?? [],
     regras: envio.regras ?? [],
+    orcamentos: envio.orcamentos ?? [],
   };
 
   for (const tabela of TABELAS) {
@@ -544,6 +603,7 @@ async function rodarSincronizacao(envio: EnvioSincronizacao): Promise<RespostaSi
     metas: saida.metas as ComVersao<Meta>[],
     transferencias: saida.transferencias as ComVersao<Transferencia>[],
     regras: saida.regras as ComVersao<RegraCategoria>[],
+    orcamentos: saida.orcamentos as ComVersao<Orcamento>[],
   };
 }
 
@@ -555,7 +615,7 @@ async function rodarSincronizacao(envio: EnvioSincronizacao): Promise<RespostaSi
  * alem disso pularia registros das outras tabelas que ficaram de fora —
  * exatamente o tipo de perda silenciosa que o cursor existe para impedir.
  *
- * Escrito para N listas de proposito. Com oito tabelas, uma versao fixa em duas
+ * Escrito para N listas de proposito. Com nove tabelas, uma versao fixa em duas
  * seria a proxima a quebrar em silencio.
  */
 function calcularCursor(cursorAtual: number, listas: readonly ComVersao<unknown>[][]): number {

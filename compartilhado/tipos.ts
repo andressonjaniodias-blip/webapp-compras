@@ -298,6 +298,76 @@ export interface RegraCategoria extends Sincronizavel {
   ordem: number;
 }
 
+/** Um achado da analise de IA. `null` em economia = nao deu para estimar. */
+export interface Achado {
+  titulo: string;
+  detalhe: string;
+  economiaEstimadaCentavos: number | null;
+}
+
+/**
+ * O resultado da analise de IA de um mes. Mora aqui, e nao em `api.ts`, porque o
+ * banco local guarda a ultima analise de cada mes e nao deve importar da camada
+ * de rede.
+ */
+export interface Dicas {
+  resumo: string;
+  achados: Achado[];
+  sugestoes: string[];
+  previsao: string;
+  metas: string;
+}
+
+/**
+ * Uma dotacao do orcamento anual: o teto de UMA categoria no ano.
+ *
+ * `categoria` e texto livre, como em `Compra`: aceita o que nao esta em
+ * `CATEGORIAS`, porque a compra tambem aceita.
+ */
+export interface LinhaOrcamento {
+  categoria: string;
+  /** Centavos. O teto vigente do ano. */
+  valorAnual: number;
+  /**
+   * Centavos. O que o gerador sugeriu (na criacao ou na ultima atualizacao).
+   * Fica guardado para a tela mostrar "nova proposta R$ X" sem mexer no teto.
+   */
+  proposto: number;
+  /** Centavos. O `valorAnual` na hora da confirmacao; `null` no rascunho. */
+  original: number | null;
+}
+
+/** O parecer da IA sobre a proposta. A IA sugere; quem aplica e o usuario. */
+export interface ParecerOrcamento {
+  geradoEm: number;
+  modelo: string | null;
+  resumo: string;
+  sugestoes: { categoria: string; valorAnualCentavos: number | null; motivo: string }[];
+}
+
+/**
+ * O orcamento de UM ano, no estilo da LOA: proposta, ajuste, confirmacao e
+ * acompanhamento do realizado contra o teto de cada categoria.
+ *
+ * Um registro por ano, com as linhas dentro dele (`id` = `orcamento:<ano>`,
+ * deterministico para dois aparelhos nao criarem duas copias). Conflito entre
+ * aparelhos e last-write-wins no ano inteiro: quem usa e uma pessoa so.
+ *
+ * `confirmadoEm` e inteiro (0 = nunca confirmado) e nao `null`, para seguir a
+ * regra de que `null` nao e indexavel nem trafega bem nas colunas numericas.
+ */
+export interface Orcamento extends Sincronizavel {
+  ano: number;
+  situacao: 'rascunho' | 'confirmado';
+  confirmadoEm: number;
+  /** Meses de uso quando a proposta foi gerada ou atualizada pela ultima vez. */
+  mesesDeBase: number;
+  /** 0, 6 ou 12: o maior aviso de atualizacao que o usuario ja dispensou. */
+  marcoDispensado: number;
+  linhas: LinhaOrcamento[];
+  parecer: ParecerOrcamento | null;
+}
+
 export interface Item extends Sincronizavel {
   compraId: string;
   nome: string;
@@ -341,6 +411,7 @@ export interface EnvioSincronizacao {
   metas?: Meta[];
   transferencias?: Transferencia[];
   regras?: RegraCategoria[];
+  orcamentos?: Orcamento[];
 }
 
 /**
@@ -358,6 +429,7 @@ export interface RespostaSincronizacao {
   metas: ComVersao<Meta>[];
   transferencias: ComVersao<Transferencia>[];
   regras: ComVersao<RegraCategoria>[];
+  orcamentos: ComVersao<Orcamento>[];
 }
 
 /** Subtotal de um item a partir de quantidade e preco, sempre arredondado. */

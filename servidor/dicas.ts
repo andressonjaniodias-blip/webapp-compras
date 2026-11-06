@@ -42,7 +42,15 @@ import {
   temBaseDeEntrada,
 } from '../compartilhado/previsao';
 import { modeloValido, type ModeloDeIa } from '../compartilhado/modelos';
-import { normalizarNome, type Compra, type Item } from '../compartilhado/tipos';
+import { executar, folgaDoOrcamento } from '../compartilhado/orcamento';
+import {
+  naoExcluido,
+  normalizarNome,
+  type Compra,
+  type Item,
+  type LinhaOrcamento,
+  type ParecerOrcamento,
+} from '../compartilhado/tipos';
 import { dadosParaAnalise } from './sincronizacao';
 
 export class IaDesligada extends Error {
@@ -104,6 +112,18 @@ const EsquemaDicas = z.object({
 
 export type ResultadoDicas = z.infer<typeof EsquemaDicas>;
 
+/**
+ * Como o dinheiro se move neste app. Errar isto invalida a analise inteira, e as
+ * duas instrucoes (do mes e do orcamento) precisam dizer a mesma coisa.
+ */
+const REGRAS_DO_DINHEIRO = `Como o dinheiro se move neste app — errar isto invalida a análise inteira:
+
+- Compra no crédito NÃO é saída de caixa no mês da compra. Ela vira fatura, e é o pagamento da fatura que tira dinheiro da conta, no mês seguinte. Nunca some as duas coisas como se fossem gastos diferentes.
+- Uma compra em 12x pesa a PARCELA por mês, não o total. Ao falar de quanto sobra, use a parcela.
+- Pagamento de fatura, parcela de dívida, saque e transferência não são gastos novos: o gasto já foi contado quando a compra foi lançada.
+- O "gasto estimado" da previsão é média histórica, não compromisso. Trate como estimativa e diga que é.
+- O "entra" dos meses futuros também é estimativa: a pessoa não cadastra salário recorrente, e o app usa a média das entradas lançadas nos últimos meses. Diga que é estimativa.`;
+
 const INSTRUCOES = `Você analisa os gastos pessoais de uma pessoa no Brasil e responde em português do Brasil.
 
 Sua análise vale pelo que é específico. Regras:
@@ -115,13 +135,7 @@ Sua análise vale pelo que é específico. Regras:
 - Não faça julgamento moral sobre os gastos e não dê conselho de investimento.
 - Valores monetários chegam em centavos inteiros; escreva-os como reais no texto (185200 é R$ 1.852,00).
 
-Como o dinheiro se move neste app — errar isto invalida a análise inteira:
-
-- Compra no crédito NÃO é saída de caixa no mês da compra. Ela vira fatura, e é o pagamento da fatura que tira dinheiro da conta, no mês seguinte. Nunca some as duas coisas como se fossem gastos diferentes.
-- Uma compra em 12x pesa a PARCELA por mês, não o total. Ao falar de quanto sobra, use a parcela.
-- Pagamento de fatura, parcela de dívida, saque e transferência não são gastos novos: o gasto já foi contado quando a compra foi lançada.
-- O "gasto estimado" da previsão é média histórica, não compromisso. Trate como estimativa e diga que é.
-- O "entra" dos meses futuros também é estimativa: a pessoa não cadastra salário recorrente, e o app usa a média das entradas lançadas nos últimos meses. Diga que é estimativa.
+${REGRAS_DO_DINHEIRO}
 
 Sobre a previsão, que é o que mais interessa a quem lê:
 
@@ -487,4 +501,183 @@ export async function proporRegras(): Promise<RegraProposta[]> {
   return resposta.parsed_output.regras
     .map((regra) => ({ ...regra, termo: normalizarNome(regra.termo) }))
     .filter((regra) => regra.termo.length >= 3 && validas.has(regra.categoria));
+}
+
+// ---------------------------------------------------------------- orcamento
+
+const EsquemaParecer = z.object({
+  resumo: z
+    .string()
+    .describe('Dois ou tres periodos: a proposta cabe na renda? Onde esta o risco? Cite numeros.'),
+  sugestoes: z
+    .array(
+      z.object({
+        categoria: z.string().describe('Exatamente como aparece nas linhas do orcamento.'),
+        valorAnualCentavos: z
+          .number()
+          .nullable()
+          .describe('Novo teto anual sugerido, em centavos. null quando so ha um comentario.'),
+        motivo: z.string().describe('Uma ou duas frases, com o numero que sustenta.'),
+      }),
+    )
+    .describe('De 0 a 6 sugestoes. So as que o historico justifica; lista vazia e valida.'),
+});
+
+const INSTRUCOES_ORCAMENTO = `Você revisa o orçamento anual de uma pessoa no Brasil: um teto por categoria para o ano todo. Responda em português do Brasil.
+
+Os tetos foram calculados pelo app a partir do histórico. Você NÃO cria orçamento nem refaz a conta: você comenta a proposta e, quando o histórico justificar, sugere ajustar o teto de uma categoria.
+
+Regras:
+
+- Cite números reais da tabela: o que cada categoria gastou por mês, quanto a proposta pede, quanto sobra ou falta na renda.
+- Procure categorias com teto abaixo do que foi gasto de fato, tetos folgados demais, e meses que concentram o gasto (sazonalidade).
+- "Folga" negativa significa que a soma dos tetos, mais dívidas e metas, não cabe na entrada estimada. Se for o caso, diga onde cortar.
+- Se a base de histórico é curta (poucos meses), diga que a proposta é frágil e que sazonalidade como presentes, saúde e impostos pode estar faltando.
+- Só sugira categorias que existem nas linhas, escritas exatamente como estão lá.
+- Não invente dado que não está nas tabelas e não dê conselho de investimento nem julgamento moral.
+- Valores chegam em centavos inteiros; escreva-os como reais no texto (185200 é R$ 1.852,00).
+
+${REGRAS_DO_DINHEIRO}`;
+
+/** Gasto por categoria nos ultimos 12 meses completos, uma linha por categoria. Agregado: barato. */
+function tabelaDoHistorico(compras: readonly Compra[], agora: number): string {
+  const meses = Array.from({ length: 12 }, (_, i) => somarMeses(chaveDoMes(agora), -(12 - i)));
+  const porCategoria = new Map<string, number[]>();
+
+  for (const compra of compras) {
+    if (!naoExcluido(compra)) continue;
+    const posicao = meses.indexOf(chaveDoMes(compra.data));
+    if (posicao < 0) continue;
+    const categoria = compra.categoria.trim() || 'Sem definição';
+    const linha = porCategoria.get(categoria) ?? new Array<number>(12).fill(0);
+    linha[posicao] = (linha[posicao] ?? 0) + compra.total;
+    porCategoria.set(categoria, linha);
+  }
+
+  if (porCategoria.size === 0) return '(sem compras nos últimos 12 meses)';
+
+  const soma = (valores: number[]) => valores.reduce((total, v) => total + v, 0);
+  const linhas = [...porCategoria.entries()]
+    .sort((a, b) => soma(b[1]) - soma(a[1]))
+    .map(
+      ([categoria, valores]) =>
+        `  ${categoria}: ${valores.map((v) => reais(v)).join(' | ')} | total R$ ${reais(soma(valores))}`,
+    );
+  return [`  meses (do mais antigo ao mais recente): ${meses.join(' ')}`, ...linhas].join('\n');
+}
+
+function validarLinhas(entrada: unknown): LinhaOrcamento[] {
+  if (!Array.isArray(entrada) || entrada.length === 0 || entrada.length > 40) {
+    throw new Error('Informe de 1 a 40 linhas de orçamento.');
+  }
+  const inteiro = (v: unknown): v is number =>
+    typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+
+  return entrada.map((bruta) => {
+    const l = (bruta ?? {}) as Partial<LinhaOrcamento>;
+    const categoria = typeof l.categoria === 'string' ? l.categoria.trim() : '';
+    if (!categoria || categoria.length > 60 || !inteiro(l.valorAnual) || !inteiro(l.proposto)) {
+      throw new Error('Linha de orçamento inválida.');
+    }
+    return { categoria, valorAnual: l.valorAnual, proposto: l.proposto, original: null };
+  });
+}
+
+/**
+ * O parecer da IA sobre a proposta de orcamento.
+ *
+ * O cliente envia as LINHAS (o rascunho pode nem ter subido ainda), mas o
+ * historico, a renda e as dividas o servidor le do proprio banco. A IA nao grava
+ * teto: devolve sugestoes que o usuario aplica uma a uma.
+ */
+export async function comentarOrcamento(entrada: {
+  ano: unknown;
+  linhas: unknown;
+}): Promise<ParecerOrcamento> {
+  const anthropic = cliente();
+
+  const ano = Number(entrada.ano);
+  if (!Number.isInteger(ano) || ano < 2000 || ano > 2100) throw new Error('Ano inválido.');
+  const linhas = validarLinhas(entrada.linhas);
+
+  const agora = Date.now();
+  const { inicio, fim } = intervaloDoMes(chaveDoMes(agora));
+  const dados = await dadosParaAnalise(inicio, fim);
+
+  const orcamento = { ano, linhas };
+  const execucao = executar(dados.compras, orcamento, chaveDoMes(agora), agora);
+  const folga = folgaDoOrcamento(dados, orcamento, agora);
+  const meses = Math.max(12, mesesAteAMetaMaisLonga(dados.metas, agora));
+  const sobraMensal = projetar(dados, { meses, agora }).filter((l) => !l.parcial)[0]?.sobra ?? 0;
+
+  const propostoDe = new Map(linhas.map((l) => [l.categoria, l.proposto]));
+  const tetos = execucao.linhas.map(
+    (l) =>
+      `  ${l.categoria}: teto anual R$ ${reais(l.teto)} (R$ ${reais(Math.round(l.teto / 12))}/mês) | proposto pelo app R$ ${reais(propostoDe.get(l.categoria) ?? 0)} | já gasto no ano R$ ${reais(l.gastoNoAno)}`,
+  );
+
+  const blocoDaFolga = folga
+    ? [
+        `ENVELOPE DO ANO ${ano} (estimativa, do mês corrente em diante)`,
+        `  entradas estimadas: R$ ${reais(folga.entradas)}${folga.entradaFraca ? ' (poucos meses de histórico, estimativa fraca)' : ''}`,
+        `  o que ainda cabe nos tetos: R$ ${reais(folga.tetos)}`,
+        `  parcelas de dívida no ano: R$ ${reais(folga.dividas)}`,
+        `  reserva das metas: R$ ${reais(folga.metas)}`,
+        `  folga (entradas menos o resto): R$ ${reais(folga.folga)}`,
+        '  as parcelas de cartão ficam de fora de propósito: compra no crédito já pesa no teto, na data da compra.',
+      ].join('\n')
+    : `ENVELOPE DO ANO ${ano}: sem entradas lançadas, não há como dizer se o orçamento cabe na renda. Não invente.`;
+
+  const pergunta = [
+    `ORÇAMENTO ANUAL DE ${ano} — LINHAS PROPOSTAS`,
+    ...tetos,
+    '',
+    'HISTÓRICO POR CATEGORIA (R$ por mês, 12 meses completos)',
+    tabelaDoHistorico(dados.compras, agora),
+    '',
+    blocoDaFolga,
+    '',
+    blocoDasMetas(dados, agora, sobraMensal),
+    '',
+    'Comente a proposta e sugira ajustes de teto só onde o histórico justificar.',
+  ].join('\n');
+
+  const resposta = await anthropic.messages.parse({
+    model: modeloDaIa(),
+    max_tokens: 16000,
+    system: INSTRUCOES_ORCAMENTO,
+    output_config: {
+      effort: 'medium',
+      format: zodOutputFormat(EsquemaParecer),
+    },
+    messages: [{ role: 'user', content: pergunta }],
+  });
+
+  if (resposta.stop_reason === 'refusal') {
+    throw new Error('O modelo recusou comentar o orçamento.');
+  }
+  if (!resposta.parsed_output) {
+    throw new Error('A resposta veio num formato inesperado. Tente de novo.');
+  }
+
+  const existentes = new Set(linhas.map((l) => l.categoria));
+  const sugestoes = resposta.parsed_output.sugestoes
+    .filter((s) => existentes.has(s.categoria))
+    .map((s) => ({
+      categoria: s.categoria,
+      valorAnualCentavos:
+        s.valorAnualCentavos !== null &&
+        Number.isFinite(s.valorAnualCentavos) &&
+        s.valorAnualCentavos >= 0
+          ? Math.round(s.valorAnualCentavos)
+          : null,
+      motivo: s.motivo,
+    }));
+
+  return {
+    geradoEm: agora,
+    modelo: modeloDaIa(),
+    resumo: resposta.parsed_output.resumo,
+    sugestoes,
+  };
 }

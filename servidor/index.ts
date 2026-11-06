@@ -19,7 +19,14 @@ import { Hono, type Context } from 'hono';
 import type { EnvioSincronizacao } from '../compartilhado/tipos';
 import { limitesDo, planoValido, type Plano } from '../compartilhado/planos';
 import { banco, comandosDoEsquema, ehBancoLocal, ehEsquemaDesatualizado } from './banco';
-import { analisarMes, IaDesligada, iaLigada, modeloDaIa, proporRegras } from './dicas';
+import {
+  analisarMes,
+  comentarOrcamento,
+  IaDesligada,
+  iaLigada,
+  modeloDaIa,
+  proporRegras,
+} from './dicas';
 import {
   abrirSessao,
   conferirConfiguracao,
@@ -144,6 +151,30 @@ app.post('/api/regras', exigirSessao, async (c) => {
     if (falha instanceof IaDesligada) return c.json({ erro: falha.message }, 503);
     const mensagem = falha instanceof Error ? falha.message : 'Falha ao propor regras.';
     return c.json({ erro: mensagem }, 500);
+  }
+});
+
+/**
+ * O parecer da IA sobre a proposta de orcamento anual.
+ *
+ * O corpo carrega as linhas porque o rascunho pode ainda nao ter sido
+ * sincronizado; o historico e a renda o servidor le do banco. Corpo invalido e
+ * 400, e nao 500: o erro e de quem chamou.
+ */
+app.post('/api/orcamento/parecer', exigirSessao, async (c) => {
+  const barrado = exigirPlanoPago(c);
+  if (barrado) return barrado;
+
+  const corpo = await c.req.json<{ ano?: unknown; linhas?: unknown }>().catch(() => null);
+  if (!corpo) return c.json({ erro: 'Corpo inválido.' }, 400);
+
+  try {
+    return c.json(await comentarOrcamento({ ano: corpo.ano, linhas: corpo.linhas }));
+  } catch (falha) {
+    if (falha instanceof IaDesligada) return c.json({ erro: falha.message }, 503);
+    const mensagem = falha instanceof Error ? falha.message : 'Falha ao comentar o orçamento.';
+    const invalido = /inválid|Informe de 1/.test(mensagem);
+    return c.json({ erro: mensagem }, invalido ? 400 : 500);
   }
 });
 

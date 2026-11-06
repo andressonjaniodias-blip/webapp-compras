@@ -43,6 +43,13 @@ import {
   terminaEm,
 } from '../../compartilhado/carteira';
 import { limitesDo } from '../../compartilhado/planos';
+import {
+  MESES_MINIMOS,
+  executar,
+  mesesDeUso,
+  orcamentoLiberado,
+} from '../../compartilhado/orcamento';
+import { listarOrcamentos } from '../dados/financas';
 import { panorama, reservaMensalDeMetas, temBaseDeEntrada } from '../../compartilhado/previsao';
 import { formatarReais } from '../lib/dinheiro';
 import { chaveMes, nomeMes } from '../lib/datas';
@@ -59,6 +66,7 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
   const navegar = useNavigate();
   const { atualizarPendentes, plano } = useApp();
   const compras = useLiveQuery(listarCompras, [], undefined);
+  const orcamentos = useLiveQuery(listarOrcamentos, [], undefined);
   const { dados, gastoManual, entradaManual, temRenda, temContas, temDividas } = financeiro;
 
   const agora = Date.now();
@@ -75,6 +83,15 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
   });
   const temBase = temBaseDeEntrada(visao.estimativaEntrada);
   const mesCorrente = resumoDoMes(dados, mes, agora);
+
+  // O orcamento deste ano e o numero dele vem da MESMA funcao da pagina de destino.
+  const anoCorrente = new Date(agora).getFullYear();
+  const orcamentoDoAno = orcamentos?.find((o) => o.ano === anoCorrente) ?? null;
+  const rascunhoAberto = orcamentos?.find((o) => o.situacao === 'rascunho') ?? null;
+  const usoEmMeses = mesesDeUso(dados.compras, agora);
+  const execucaoDoAno =
+    orcamentoDoAno?.situacao === 'confirmado' ? executar(dados.compras, orcamentoDoAno, mes, agora) : null;
+  const estouradas = execucaoDoAno?.linhas.filter((l) => l.estado === 'estoura').length ?? 0;
 
   async function nova() {
     const id = await criarCompra();
@@ -254,6 +271,30 @@ export function Painel({ financeiro }: { financeiro: EstadoFinanceiro }) {
             </>
           ) : (
             <span className="dica">Nenhuma meta ainda.</span>
+          )}
+        </Cartao>
+
+        <Cartao titulo="Orçamento" onAbrir={() => navegar('/orcamento')}>
+          {orcamentos === undefined ? null : execucaoDoAno ? (
+            <>
+              <span className="dica">gasto no ano, nos tetos</span>
+              <span className="painel-numero">{formatarReais(execucaoDoAno.gastoNoAno)}</span>
+              <BarraDeProgresso
+                progresso={execucaoDoAno.totalDosTetos > 0 ? execucaoDoAno.gastoNoAno / execucaoDoAno.totalDosTetos : 0}
+                rotulo={`${formatarReais(execucaoDoAno.gastoNoAno)} gastos de ${formatarReais(execucaoDoAno.totalDosTetos)} em tetos`}
+              />
+              <span className="dica">
+                de {formatarReais(execucaoDoAno.totalDosTetos)}
+                {estouradas > 0 &&
+                  ` · ${estouradas} ${estouradas === 1 ? 'categoria estourou' : 'categorias estouraram'}`}
+              </span>
+            </>
+          ) : rascunhoAberto ? (
+            <span className="dica">Orçamento de {rascunhoAberto.ano} em rascunho, esperando confirmação.</span>
+          ) : orcamentoLiberado(usoEmMeses) ? (
+            <span className="dica">Nenhum orçamento ainda.</span>
+          ) : (
+            <span className="dica">Abre com {MESES_MINIMOS} meses de uso ({usoEmMeses} de {MESES_MINIMOS}).</span>
           )}
         </Cartao>
       </div>

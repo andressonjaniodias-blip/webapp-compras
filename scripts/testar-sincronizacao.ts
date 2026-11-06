@@ -29,6 +29,7 @@ import type {
   EnvioSincronizacao,
   Item,
   Meta,
+  Orcamento,
   RegraCategoria,
   Renda,
   Transferencia,
@@ -167,6 +168,29 @@ function regraExemplo(id: string, atualizadoEm: number): RegraCategoria {
   };
 }
 
+function orcamentoExemplo(id: string, atualizadoEm: number): Orcamento {
+  return {
+    id,
+    ano: 2027,
+    situacao: 'confirmado',
+    confirmadoEm: atualizadoEm,
+    mesesDeBase: 6,
+    marcoDispensado: 6,
+    linhas: [
+      { categoria: 'Mercado', valorAnual: 1_800_000, proposto: 1_700_000, original: 1_800_000 },
+      { categoria: 'Presentes "de fim de ano"', valorAnual: 300_000, proposto: 300_000, original: null },
+    ],
+    parecer: {
+      geradoEm: atualizadoEm,
+      modelo: 'claude-haiku-5-5',
+      resumo: 'Cabe na renda; atenção a dezembro.',
+      sugestoes: [{ categoria: 'Mercado', valorAnualCentavos: 1_750_000, motivo: 'média de R$ 1.458/mês' }],
+    },
+    atualizadoEm,
+    excluidoEm: null,
+  };
+}
+
 const vazio = (cursor: number): EnvioSincronizacao => ({ cursor, compras: [], itens: [] });
 
 async function principal(): Promise<void> {
@@ -257,7 +281,7 @@ async function principal(): Promise<void> {
   const compra2 = repetido.compras.find((c) => c.id === 'compra-2');
   conferir('ficou a versao mais recente do lote', compra2?.total === 200, String(compra2?.total));
 
-  console.log('\n9. As seis tabelas novas fazem a viagem de ida e volta');
+  console.log('\n9. As sete tabelas novas fazem a viagem de ida e volta');
   const T1 = T0 + 500_000;
   const novas = await sincronizar({
     cursor: repetido.cursor,
@@ -269,6 +293,7 @@ async function principal(): Promise<void> {
     metas: [metaExemplo('meta-1', T1)],
     transferencias: [transferenciaExemplo('transf-1', T1)],
     regras: [regraExemplo('regra-1', T1)],
+    orcamentos: [orcamentoExemplo('orcamento:2027', T1)],
   });
   conferir('a conta voltou', novas.contas[0]?.apelido === 'Nubank 4417');
   conferir('o dia de fechamento sobreviveu', novas.contas[0]?.diaFechamento === 20);
@@ -284,6 +309,25 @@ async function principal(): Promise<void> {
   conferir('o alvo da transferencia sobreviveu', novas.transferencias[0]?.alvoId === 'conta-1');
   conferir('a competencia sobreviveu', novas.transferencias[0]?.competencia === '2026-09');
   conferir('a regra voltou', novas.regras[0]?.categoria === 'Combustível');
+
+  const orcamentoVolta = novas.orcamentos[0];
+  conferir('o orcamento voltou', orcamentoVolta?.id === 'orcamento:2027' && orcamentoVolta.ano === 2027);
+  conferir('a situacao sobreviveu', orcamentoVolta?.situacao === 'confirmado');
+  conferir('as linhas viajam como JSON', orcamentoVolta?.linhas.length === 2);
+  conferir(
+    'o teto e o original voltam como numero',
+    orcamentoVolta?.linhas[0]?.valorAnual === 1_800_000 && orcamentoVolta.linhas[0].original === 1_800_000,
+  );
+  conferir('original null sobrevive', orcamentoVolta?.linhas[1]?.original === null);
+  conferir(
+    'aspas na categoria nao quebram o JSON',
+    orcamentoVolta?.linhas[1]?.categoria === 'Presentes "de fim de ano"',
+  );
+  conferir(
+    'o parecer da IA sobrevive',
+    orcamentoVolta?.parecer?.sugestoes[0]?.valorAnualCentavos === 1_750_000,
+  );
+  conferir('marco dispensado e meses de base sobrevivem', orcamentoVolta?.marcoDispensado === 6 && orcamentoVolta.mesesDeBase === 6);
 
   console.log('\n10. Conflito e lapide valem nas tabelas novas tambem');
   const conflito = await sincronizar({
@@ -348,7 +392,7 @@ async function principal(): Promise<void> {
   conferir('o lote foi aceito sem as listas novas', antigo.compras.length > 0);
   conferir('e o servidor devolveu as tabelas novas mesmo assim', antigo.contas.length === 1);
 
-  console.log('\n13. Um aparelho novo, do zero, recebe as oito tabelas');
+  console.log('\n13. Um aparelho novo, do zero, recebe as nove tabelas');
   const zerado = await sincronizar(vazio(0));
   conferir('recebeu contas', zerado.contas.length === 1);
   conferir('recebeu rendas', zerado.rendas.length === 1);
@@ -356,6 +400,7 @@ async function principal(): Promise<void> {
   conferir('recebeu metas (inclusive a que esta na lapide)', zerado.metas.length === 1);
   conferir('recebeu transferencias', zerado.transferencias.length === 1);
   conferir('recebeu regras', zerado.regras.length === 1);
+  conferir('recebeu orcamentos', zerado.orcamentos.length === 1);
   conferir(
     'o cursor cobre a maior versao de todas as tabelas',
     zerado.cursor === parcelada.cursor || zerado.cursor >= antigo.cursor,
@@ -388,7 +433,9 @@ async function principal(): Promise<void> {
 async function testarAutocuraDoEsquema(consultar: Awaited<ReturnType<typeof banco>>): Promise<void> {
   console.log('\n14. O banco atrasado se cura sozinho (o incidente de producao)');
 
-  const tabelasNovas = ['contas', 'rendas', 'dividas', 'metas', 'transferencias', 'regras'];
+  const tabelasNovas = [
+    'contas', 'rendas', 'dividas', 'metas', 'transferencias', 'regras', 'orcamentos',
+  ];
   for (const tabela of tabelasNovas) await consultar('DROP TABLE IF EXISTS ' + tabela);
   await consultar('DROP TABLE IF EXISTS compras');
   await consultar('DROP TABLE IF EXISTS itens');
@@ -451,7 +498,12 @@ async function testarAutocuraDoEsquema(consultar: Awaited<ReturnType<typeof banc
   conferir('a sincronizacao nao morre com o banco atrasado', curou, detalhe);
   if (!resposta) return;
 
-  conferir('as oito listas voltaram', Array.isArray(resposta.contas) && Array.isArray(resposta.regras));
+  conferir(
+    'as nove listas voltaram',
+    Array.isArray(resposta.contas) &&
+      Array.isArray(resposta.regras) &&
+      Array.isArray(resposta.orcamentos),
+  );
   conferir('a compra da v1 sobreviveu', resposta.compras.some((c) => c.id === 'compra-da-v1'));
   conferir(
     'e ganhou o padrao das colunas novas',
@@ -468,7 +520,7 @@ async function testarAutocuraDoEsquema(consultar: Awaited<ReturnType<typeof banc
   );
   const nomes = new Set(criadas.map((linha) => linha.table_name));
   conferir(
-    'as seis tabelas novas passaram a existir',
+    'as sete tabelas novas passaram a existir',
     tabelasNovas.every((t) => nomes.has(t)),
     [...nomes].join(', '),
   );
